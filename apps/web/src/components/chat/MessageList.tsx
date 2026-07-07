@@ -11,6 +11,7 @@ const NEAR_BOTTOM_PX = 80
 
 export function MessageList() {
   const messages = useChatStore((s) => s.messages)
+  const sessionCode = useChatStore((s) => s.sessionCode)
   const isStreaming = useChatStore((s) => s.isStreaming)
   const error = useChatStore((s) => s.error)
 
@@ -42,6 +43,16 @@ export function MessageList() {
       setShowJump(true)
     }
   }
+
+  // 切换会话：重置贴底/按钮状态并滚到底（消息条数可能相同，不能仅靠 count）
+  useEffect(() => {
+    followRef.current = true
+    jumpingRef.current = false
+    setShowJump(false)
+    const el = scrollRef.current
+    if (el) el.scrollTop = el.scrollHeight
+    scrollToBottom()
+  }, [sessionCode])
 
   // 新增消息（发送 / 新回复）：强制贴底并恢复跟随
   useEffect(() => {

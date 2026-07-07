@@ -1,9 +1,9 @@
 ---
-description: xx Chat AI 项目总览、硬性约束与开发习惯
+description: XX Chat AI 项目总览、硬性约束与开发习惯
 alwaysApply: true
 ---
 
-# xx Chat AI — 项目规则
+# XX Chat AI — 项目规则
 
 **方案文档**：`docs/plan.md`（改动后按 `plan-sync` 规则判断是否同步）。
 

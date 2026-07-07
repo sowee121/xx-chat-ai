@@ -26,7 +26,7 @@ for (const p of providers) {
 app
   .listen({ port: PORT, host: '0.0.0.0' })
   .then((address) => {
-    app.log.info(`xx-chat-ai server listening at ${address}`);
+    app.log.info(`XX Chat AI server listening at ${address}`);
   })
   .catch((err) => {
     app.log.error(err);

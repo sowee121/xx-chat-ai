@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { MessageSquare, SquarePen, Trash2 } from 'lucide-react'
+import { SquarePen, Trash2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -9,11 +9,10 @@ import {
   SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
-  SidebarMenuAction,
-  SidebarMenuButton,
   SidebarMenuItem,
   useSidebar,
 } from '@/components/ui/sidebar'
+import { cn } from '@/lib/utils'
 import { useChatStore } from '@/stores/chatStore'
 import { styles } from './AppSidebar.styles'
 
@@ -47,39 +46,55 @@ export function AppSidebar() {
   return (
     <Sidebar collapsible="offcanvas">
       <SidebarHeader className={styles.header}>
-        <Button variant="outline" className={styles.newBtn} onClick={handleNew}>
-          <SquarePen />
+        <Button variant="outline" size="lg" className={styles.newBtn} onClick={handleNew}>
+          <SquarePen className={styles.newBtnIcon} />
           新对话
         </Button>
       </SidebarHeader>
 
-      <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel>历史会话</SidebarGroupLabel>
+      <SidebarContent className={styles.content}>
+        <SidebarGroup className={styles.group}>
+          <SidebarGroupLabel className={styles.groupLabel}>历史会话</SidebarGroupLabel>
           {sessions.length === 0 ? (
             <p className={styles.empty}>还没有会话</p>
           ) : (
-            <SidebarMenu>
-              {sessions.map((s) => (
-                <SidebarMenuItem key={s.sessionCode}>
-                  <SidebarMenuButton
-                    isActive={s.sessionCode === sessionCode}
-                    tooltip={s.title}
-                    onClick={() => handleOpen(s.sessionCode)}
-                  >
-                    <MessageSquare />
-                    <span>{s.title}</span>
-                  </SidebarMenuButton>
-                  <SidebarMenuAction
-                    showOnHover
-                    aria-label="删除会话"
-                    onClick={() => void removeSession(s.sessionCode)}
-                  >
-                    <Trash2 />
-                  </SidebarMenuAction>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
+            <div className={styles.sessionScroll}>
+              <SidebarMenu className={styles.menu}>
+                {sessions.map((s) => {
+                  const isActive = s.sessionCode === sessionCode
+                  return (
+                    <SidebarMenuItem key={s.sessionCode}>
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        title={s.title}
+                        className={cn(styles.sessionRow, isActive && styles.sessionRowActive)}
+                        onClick={() => handleOpen(s.sessionCode)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault()
+                            handleOpen(s.sessionCode)
+                          }
+                        }}
+                      >
+                        <span className={styles.sessionTitle}>{s.title}</span>
+                        <button
+                          type="button"
+                          className={styles.sessionDelete}
+                          aria-label="删除会话"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            void removeSession(s.sessionCode)
+                          }}
+                        >
+                          <Trash2 className={styles.deleteIcon} />
+                        </button>
+                      </div>
+                    </SidebarMenuItem>
+                  )
+                })}
+              </SidebarMenu>
+            </div>
           )}
         </SidebarGroup>
       </SidebarContent>

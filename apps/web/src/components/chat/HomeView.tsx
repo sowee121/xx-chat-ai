@@ -13,7 +13,7 @@ export function HomeView() {
 
   return (
     <div className={styles.wrap}>
-      <h1 className={styles.title}>想知道点什么？</h1>
+      <h1 className={styles.title}>嘻嘻，想问点什么呢？</h1>
 
       <div className={styles.composerWrap}>
         <ChatComposer autoFocus showHint={false} />

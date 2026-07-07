@@ -1,6 +1,7 @@
 export const styles = {
   wrap: 'relative h-full',
-  scroll: 'h-full overflow-y-auto',
+  scroll:
+    'h-full overflow-y-auto [scrollbar-color:color-mix(in_oklch,var(--foreground)_25%,transparent)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-foreground/25 [&::-webkit-scrollbar-track]:bg-transparent',
   column: 'mx-auto flex max-w-3xl flex-col gap-6 px-4 py-6 sm:px-6',
   error: 'border-destructive/30 bg-destructive/10 text-destructive rounded-xl border px-4 py-3 text-sm',
   jump: 'absolute bottom-4 left-1/2 size-9 -translate-x-1/2 rounded-full border shadow-md transition-all duration-200 ease-out motion-reduce:transition-none',

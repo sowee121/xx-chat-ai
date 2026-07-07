@@ -1,9 +1,9 @@
-# xx Chat AI — 全栈 AI 聊天方案
+# XX Chat AI — 全栈 AI 聊天方案
 
-> **项目名称**：**xx Chat AI**  
+> **项目名称**：**XX Chat AI**  
 >
-> - **GitHub 仓库名**：`xx-chat-ai`（小写 + 连字符，三段式：xx / chat / ai）  
-> - **xx** — 品牌字符（用户指定）  
+> - **GitHub 仓库名**：`xx-chat-ai`（小写 + 连字符，历史仓库名保留）  
+> - **XX** — 品牌字符  
 > - **Chat** — AI 聊天  
 > - **AI** — 大模型对话  
 > - 副标题 / README：`Full-Stack AI Chat`（体现前后端全栈）
@@ -37,7 +37,7 @@
 
 | 项 | 选择 |
 | --- | --- |
-| **项目名称** | **xx Chat AI**（GitHub：`xx-chat-ai`，目录 `Interview/xx-chat-ai/`） |
+| **项目名称** | **XX Chat AI**（GitHub：`xx-chat-ai`，目录 `Interview/xx-chat-ai/`） |
 | 定位 | **全栈 AI 聊天** — React 前端 + Fastify 后端 + LLM 流式对话 |
 | 结构 | pnpm workspace：`apps/web` + `apps/server` |
 | 前端 | Vite 8 + React 19 + TypeScript 6 |
@@ -47,7 +47,7 @@
 | Markdown | Streamdown + `@streamdown/code` + `@streamdown/mermaid` + `@streamdown/cjk` |
 | **样式栈** | shadcn/ui + Tailwind CSS 4（`@tailwindcss/vite`） |
 | **UI 组件** | shadcn CLI → `components/ui/*`（Button、Input、Sidebar、DropdownMenu、Tooltip…） |
-| **图标** | lucide-react；操作图标 18px、Logo 20px、发送/停止图标 20px（`size-5`） |
+| **图标** | lucide-react；操作图标 18px、发送/停止图标 20px（`size-5`） |
 | **主题** | 官网 **Maia + Neutral** preset `b6iJYxYW` + `next-themes` |
 | **字体** | Source Sans 3 Variable（init 后实际使用，非 Inter） |
 | **视觉** | ChatGPT/Grok 简约；全页 `bg-background`；大圆角 `--radius: 1rem` |
@@ -79,7 +79,7 @@ pnpm add next-themes streamdown @streamdown/code @streamdown/mermaid @streamdown
 | `--radius`（根） | `1rem` |
 | Button / Input | `rounded-lg` |
 | Streamdown 块级卡片（代码/表格/图片/Mermaid） | 统一 `rounded-lg`（`--radius-lg`） |
-| 聊天输入外容器 | ChatGPT 风 `rounded-[28px]` |
+| 聊天输入外容器 | ChatGPT 风 `rounded-full` 胶囊形 |
 | 发送/停止按钮 | Grok 风 `rounded-full`（`size-9`） |
 | 停止图标 | 实心圆角小方块 `<span class="size-3.5 rounded-[4px] bg-current" />` |
 
@@ -96,14 +96,14 @@ pnpm add next-themes streamdown @streamdown/code @streamdown/mermaid @streamdown
 
 ```
 ┌─ Sidebar ────┬─ 主区域 ─────────────────────────────────────┐
-│ [新对话]      │ [≡] xx Chat AI    [Mock▾][模型▾] │ [✎] [🌓] │
+│ [新对话]      │ [≡][✎]      XX Chat AI      [Mock▾][模型▾] [🌓] │
 │ 历史会话列表   ├──────────────────────────────────────────────┤
 │ (hover 删除)  │                                              │
-│              │   空状态：居中「想知道点什么？」+ 快捷标签       │
+│              │   空状态：居中「嘻嘻，想问点什么呢？」+ 快捷标签       │
 │              │   有对话：用户右对齐气泡 / AI 全宽 Streamdown    │
 │              │                                              │
 │              │   ╭──────────────────────────────────────╮   │
-│              │   │  想知道点什么？              ( ↑ )    │   │  ChatGPT 大圆角容器
+│              │   │  嘻嘻，想问点什么呢？              ( ↑ )    │   │  ChatGPT 大圆角容器
 │              │   ╰──────────────────────────────────────╯   │  Grok 圆形发送/停止
 │              │   Mock/OpenAI 模式提示文案                    │
 └──────────────┴──────────────────────────────────────────────┘
@@ -111,10 +111,10 @@ pnpm add next-themes streamdown @streamdown/code @streamdown/mermaid @streamdown
 
 | 区域 | 实现 |
 | --- | --- |
-| 侧栏 | `AppSidebar` + shadcn `Sidebar`（offcanvas）；`TooltipProvider` 包裹（必须，否则有历史会话时白屏） |
-| 顶栏 | `ChatHeader`：`SidebarTrigger` + 品牌 + `ProviderMenu` + `ModelMenu` + 新对话 + `ModeToggle` |
+| 侧栏 | `AppSidebar` + shadcn `Sidebar`（offcanvas）；顶部留白加大；新对话/列表项 `h-11` 无前置图标；`TooltipProvider` 包裹（必须，否则有历史会话时白屏） |
+| 顶栏 | `ChatHeader`：左 `SidebarTrigger` + 新对话；中品牌标题居中；右 `ProviderMenu` + `ModelMenu` + `ModeToggle` |
 | 空状态 | `HomeView`：居中标题 + `ChatComposer` + 快捷标签 |
-| 用户消息 | 右对齐圆角气泡（Grok 风） |
+| 用户消息 | 右对齐圆角气泡（Grok 风）；悬浮左侧显示复制按钮 |
 | AI 消息 | 全宽 `MarkdownMessage`（Streamdown），非气泡 |
 | 输入区 | `ChatComposer`：ChatGPT 统一大圆角容器 + 内嵌无边框 `Input` + Grok 圆形按钮 |
 | Provider | `ProviderMenu`（DropdownMenu）；流式中禁用切换 |

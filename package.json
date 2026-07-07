@@ -2,7 +2,7 @@
   "name": "xx-chat-ai",
   "version": "0.1.0",
   "private": true,
-  "description": "xx Chat AI — Full-Stack AI Chat",
+  "description": "XX Chat AI — Full-Stack AI Chat",
   "type": "module",
   "scripts": {
     "dev": "concurrently -n web,server -c cyan,magenta \"pnpm --filter @xx-chat-ai/web dev\" \"pnpm --filter @xx-chat-ai/server dev\"",

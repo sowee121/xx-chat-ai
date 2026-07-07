@@ -1,4 +1,4 @@
-import { Sparkles, SquarePen } from 'lucide-react'
+import { SquarePen } from 'lucide-react'
 
 import { ModeToggle } from '@/components/mode-toggle'
 import { Button } from '@/components/ui/button'
@@ -14,16 +14,8 @@ export function ChatHeader() {
 
   return (
     <header className={styles.header}>
-      <div className={styles.brand}>
+      <div className={styles.leading}>
         <SidebarTrigger />
-        <Sparkles className={styles.brandIcon} />
-        <span>xx Chat AI</span>
-      </div>
-
-      <div className={styles.actions}>
-        <ProviderMenu />
-        <ModelMenu />
-        <span aria-hidden className={styles.divider} />
         <Button
           variant="ghost"
           size="icon"
@@ -33,6 +25,13 @@ export function ChatHeader() {
         >
           <SquarePen />
         </Button>
+      </div>
+
+      <span className={styles.title}>XX Chat AI</span>
+
+      <div className={styles.actions}>
+        <ProviderMenu />
+        <ModelMenu />
         <ModeToggle />
       </div>
     </header>

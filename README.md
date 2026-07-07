@@ -1,4 +1,4 @@
-# xx Chat AI
+# XX Chat AI
 
 **Full-Stack AI Chat** — 全栈 AI 流式聊天 Demo
 

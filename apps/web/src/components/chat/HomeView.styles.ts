@@ -3,5 +3,5 @@ export const styles = {
   title: 'font-heading text-center text-3xl font-medium tracking-tight sm:text-4xl',
   composerWrap: 'w-full',
   chips: 'flex flex-wrap justify-center gap-2',
-  chip: 'border-border text-muted-foreground hover:bg-muted hover:text-foreground rounded-full border px-4 py-2 text-sm transition-colors',
+  chip: 'border-border text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer rounded-full border px-4 py-2 text-sm transition-colors',
 } as const

@@ -133,6 +133,12 @@
   html {
     @apply font-sans;
     }
+  button:not(:disabled):not([data-sidebar="rail"]) {
+    cursor: pointer;
+  }
+  button:disabled {
+    cursor: not-allowed;
+  }
 }
 
 /* Streamdown 块级消息卡片外层圆角统一为 rounded-lg，与内部元素更协调 */
@@ -189,4 +195,13 @@
 /* 图片可点击放大预览 */
 .prose-message [data-streamdown="image"] {
   cursor: zoom-in;
+}
+
+/* Streamdown 工具栏按钮 */
+.prose-message :is(
+  [data-streamdown="code-block"],
+  [data-streamdown="mermaid-block"],
+  [data-streamdown="table-wrapper"]
+) button:not(:disabled) {
+  cursor: pointer;
 }

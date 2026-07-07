@@ -1,5 +1,5 @@
 ---
-description: xx Chat AI 后端约定（Fastify / SSE / Provider / SQLite）
+description: XX Chat AI 后端约定（Fastify / SSE / Provider / SQLite）
 globs: apps/server/**
 alwaysApply: false
 ---

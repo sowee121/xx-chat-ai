@@ -36,7 +36,8 @@ export function ChatComposer({ autoFocus = false, showHint = true }: ChatCompose
         <Input
           autoFocus={autoFocus}
           className={styles.input}
-          placeholder="想知道点什么？"
+          style={{ background: 'transparent' }}
+          placeholder="嘻嘻，想问点什么呢？"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => {
