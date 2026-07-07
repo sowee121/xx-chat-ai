@@ -1,0 +1,41 @@
+---
+description: xx Chat AI 前端约定（React / SSE / Zustand / Streamdown）
+globs: apps/web/**
+alwaysApply: false
+---
+
+# 前端规则
+
+## 技术栈
+
+Vite 8 · React 19 · TypeScript 6 · shadcn/ui · Tailwind 4 · next-themes · Zustand · Streamdown
+
+## SSE 与状态
+
+- 流式请求只用 `@microsoft/fetch-event-source`；停止用 `AbortController`。
+- 事件：`meta` → `delta`* → `done` | `error`；在 store 累加 `content`。
+- `provider` / `model` 持久化在 Zustand；流式中禁用 Provider 切换。
+- Vite 代理 `/api` → `localhost:3001`。
+
+## UI 布局（勿随意改）
+
+- ChatGPT + Grok 混合：用户右对齐气泡；AI 全宽 Streamdown（非气泡）。
+- Header：`ProviderMenu` + `ModelMenu`（仅 openai）+ 新对话 + 主题切换。
+- 输入：`ChatComposer` 大圆角容器 + 圆形发送/停止。
+- 根节点必须 `TooltipProvider` + `SidebarProvider`（缺 TooltipProvider 会白屏）。
+
+## Streamdown
+
+- 块级卡片圆角、toolbar 图标尺寸/顺序、图片 `cursor: zoom-in` 在 `index.css` 维护。
+- 图片预览用自研 `ImageLightbox`（Streamdown 无原生图片全屏）。
+- 不要依赖 Streamdown 代码块全屏能力。
+
+## 样式
+
+详见同目录 `ui-styling.mdc`：长 class 抽到 `*.styles.ts`，优先 shadcn 默认 variant。
+
+## 组件约定
+
+- shadcn 原语在 `components/ui/`；业务在 `components/chat/`、`components/layout/`。
+- 图标 lucide-react；发送/停止 `size-5`，操作区 18px。
+- 新增 shadcn 组件用 CLI，不手写 duplicate。

@@ -1,0 +1,51 @@
+---
+description: xx Chat AI 后端约定（Fastify / SSE / Provider / SQLite）
+globs: apps/server/**
+alwaysApply: false
+---
+
+# 后端规则
+
+## 技术栈
+
+Fastify 5 · TypeScript 6 · openai SDK · better-sqlite3
+
+## 路由
+
+- 聊天：`POST /api/chat` — SSE，`reply.raw` 流式写出；`close` 时持久化已生成内容。
+- 历史：`/api/history` CRUD，实现见 `store/sqlite.ts`。
+- Provider：`GET /api/providers`、`GET /api/providers/openai/models`（10min 缓存）。
+
+## Provider 架构
+
+```
+providers/
+  mock.ts    关键词意图，本地多格式 showcase
+  openai.ts  openai SDK 流式 + models.list
+  config.ts  可用性探测；label 为「OpenAI」
+  index.ts   按 provider 分发
+```
+
+- 新增供应商：加 provider 模块 + `config` 注册 + 必要时新路由；保持 SSE 事件格式一致。
+- 错误信息用户可见部分用中文；内部日志可英文。
+
+## 配置
+
+- 读取：`config/local.ts` → `config.local.json`；`OPENAI_*` 环境变量覆盖。
+- 模板：`config.local.example.json`（进仓库）；真实 `config.local.json` gitignore。
+- 默认 DB：`data/chat.db`（WAL）；可用 `DB_PATH` 覆盖。
+
+## SSE 事件格式（勿破坏兼容）
+
+```ts
+// meta → delta (多次) → done | error
+{ type: 'meta', sessionCode, messageId }
+{ type: 'delta', content: string }
+{ type: 'done' }
+{ type: 'error', message: string }
+```
+
+## 注意
+
+- 不使用 `dotenv`；生产靠平台 Secret 注入环境变量。
+- `better-sqlite3` 为 native 依赖，改 Node 版本后可能需要 `pnpm rebuild`。

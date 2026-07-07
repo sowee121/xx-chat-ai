@@ -1,0 +1,8 @@
+{
+  "defaultProvider": "mock",
+  "openai": {
+    "apiKey": "sk-your-api-key",
+    "baseURL": "https://api.openai.com/v1",
+    "model": "gpt-4o"
+  }
+}

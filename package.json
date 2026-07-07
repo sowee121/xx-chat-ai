@@ -1,0 +1,19 @@
+{
+  "name": "xx-chat-ai",
+  "version": "0.1.0",
+  "private": true,
+  "description": "xx Chat AI — Full-Stack AI Chat",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -n web,server -c cyan,magenta \"pnpm --filter @xx-chat-ai/web dev\" \"pnpm --filter @xx-chat-ai/server dev\"",
+    "dev:web": "pnpm --filter @xx-chat-ai/web dev",
+    "dev:server": "pnpm --filter @xx-chat-ai/server dev",
+    "build": "pnpm --filter @xx-chat-ai/web build && pnpm --filter @xx-chat-ai/server build"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["better-sqlite3", "esbuild"]
+  }
+}

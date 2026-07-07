@@ -1,0 +1,16 @@
+node_modules
+dist
+build
+*.local
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+apps/server/data/*.db
+apps/server/data/*.db-*
+apps/server/data/*.sqlite
+apps/server/config.local.json
+apps/web/dist
+.agents
+skills-lock.json
