@@ -33,11 +33,12 @@ export interface HistoryStore {
   ensureSession(sessionCode: string | undefined, title: string): Session;
   appendMessage(sessionCode: string, role: Role, content: string): void;
   deleteSession(sessionCode: string): void;
+  deleteSessions(sessionCodes: string[]): void;
 }
 
 function titleFromQuery(query: string): string {
   const t = query.trim().replace(/\s+/g, ' ');
-  return t.length > 30 ? `${t.slice(0, 30)}…` : t || '新对话';
+  return t.length > 30 ? `${t.slice(0, 30)}…` : t || '新建对话';
 }
 
 class InMemoryHistoryStore implements HistoryStore {
@@ -85,6 +86,12 @@ class InMemoryHistoryStore implements HistoryStore {
 
   deleteSession(sessionCode: string): void {
     this.sessions.delete(sessionCode);
+  }
+
+  deleteSessions(sessionCodes: string[]): void {
+    for (const sessionCode of sessionCodes) {
+      this.sessions.delete(sessionCode);
+    }
   }
 }
 

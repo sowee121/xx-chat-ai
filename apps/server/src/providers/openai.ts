@@ -1,11 +1,14 @@
 import OpenAI from 'openai';
 import { getOpenaiCredentials } from '../config/local.js';
+import { extractReasoningFromDelta } from '../lib/reasoningDelta.js';
+import { ThinkingStreamParser } from '../lib/thinkingParser.js';
 import type { ChatStream, StreamOptions } from '../types.js';
 import { isOpenaiConfigured } from './config.js';
 
 const DEFAULT_SYSTEM_PROMPT =
   '你是 XX Chat AI 的助手。回答使用简洁的中文 Markdown；' +
-  '涉及代码时用带语言标注的代码块，涉及对比时可用表格，涉及流程时可用 Mermaid 图。';
+  '涉及代码时用带语言标注的代码块，涉及对比时可用表格，涉及流程时可用 Mermaid 图（graph、sequenceDiagram 等）；' +
+  '数值对比图请用 xychart-beta，不要使用 barChart。';
 
 let client: OpenAI | null = null;
 let clientKey = '';
@@ -84,9 +87,24 @@ export async function listOpenaiModels(): Promise<string[]> {
   return fallback;
 }
 
+type DeltaWithReasoning = {
+  content?: string | null;
+  reasoning_content?: string | null;
+  reasoning?: string | null;
+  thinking?: string | null;
+  thinking_content?: string | null;
+  thinking_blocks?: unknown;
+};
+
+function* emitParsed(parser: ThinkingStreamParser, text: string) {
+  for (const part of parser.push(text)) {
+    yield part;
+  }
+}
+
 /**
  * OpenAI provider：通过 openai SDK 以流式方式代理到 OpenAI API（兼容端点）。
- * 逐块产出 delta，透传前端 AbortSignal 以支持「停止生成」。
+ * 优先从 delta 多字段提取推理；否则对 content 做思考标签流式解析。
  */
 export async function* openaiStream(opts: StreamOptions): ChatStream {
   const { query, messages, signal, model: modelOverride } = opts;
@@ -100,6 +118,8 @@ export async function* openaiStream(opts: StreamOptions): ChatStream {
     { role: 'user', content: query },
   ];
 
+  const parser = new ThinkingStreamParser();
+
   try {
     const stream = await getOpenaiClient().chat.completions.create(
       { model, messages: chatMessages, stream: true },
@@ -108,10 +128,24 @@ export async function* openaiStream(opts: StreamOptions): ChatStream {
 
     for await (const chunk of stream) {
       if (signal.aborted) break;
-      const delta = chunk.choices[0]?.delta?.content;
-      if (delta) yield delta;
+      const delta = chunk.choices[0]?.delta as DeltaWithReasoning | undefined;
+      if (!delta) continue;
+
+      const reasoning = extractReasoningFromDelta(delta as Record<string, unknown>);
+      if (reasoning) {
+        yield { type: 'reasoning', content: reasoning };
+      }
+
+      const content = delta.content;
+      if (content) {
+        yield* emitParsed(parser, content);
+      }
     }
   } catch (err) {
     throw normalizeOpenaiError(err, model);
+  } finally {
+    for (const part of parser.flush()) {
+      yield part;
+    }
   }
 }

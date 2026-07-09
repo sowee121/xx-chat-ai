@@ -5,25 +5,49 @@ function sleep(ms: number): Promise<void> {
 }
 
 function codeAnswer(q: string): string[] {
-  return [
+  const wantsThrottle = /节流|throttle/i.test(q);
+  const lines = [
     `下面是「${q}」对应的实现：`,
     '',
-    '```ts',
-    'export function debounce<T extends (...args: any[]) => void>(',
-    '  fn: T,',
-    '  delay = 300,',
-    ') {',
-    '  let timer: ReturnType<typeof setTimeout> | undefined',
-    '  return (...args: Parameters<T>) => {',
+    '**防抖 debounce**：连续触发时重置计时，停止触发后再执行。',
+    '',
+    '```js',
+    'function debounce(fn, delay = 300) {',
+    '  let timer',
+    '  return (...args) => {',
     '    clearTimeout(timer)',
     '    timer = setTimeout(() => fn(...args), delay)',
     '  }',
     '}',
     '```',
-    '',
-    '- 连续触发时不断重置计时器，只有停止触发 `delay` 毫秒后才执行；',
-    '- 常用于搜索输入、窗口 `resize`、按钮防连点等场景。',
   ];
+
+  if (wantsThrottle) {
+    lines.push(
+      '',
+      '**节流 throttle**：在固定时间窗口内最多执行一次。',
+      '',
+      '```js',
+      'function throttle(fn, interval = 300) {',
+      '  let last = 0',
+      '  return (...args) => {',
+      '    const now = Date.now()',
+      '    if (now - last >= interval) {',
+      '      last = now',
+      '      fn(...args)',
+      '    }',
+      '  }',
+      '}',
+      '```',
+    );
+  }
+
+  lines.push(
+    '',
+    '- 防抖适合搜索联想、表单校验；节流适合滚动监听、拖拽跟手等场景。',
+  );
+
+  return lines;
 }
 
 function tableAnswer(q: string): string[] {
@@ -48,7 +72,7 @@ function mermaidAnswer(q: string): string[] {
     '',
     '```mermaid',
     'graph TD',
-    '  A[打开登录页] --> B[输入账号密码]',
+    '  A([开始]) --> B["输入账号密码 / 验证码 / 第三方授权"]',
     '  B --> C{校验表单}',
     '  C -->|不通过| B',
     '  C -->|通过| D[提交后端]',
@@ -58,6 +82,36 @@ function mermaidAnswer(q: string): string[] {
     '```',
     '',
     '点击图表右上角按钮可放大查看。',
+  ];
+}
+
+function mathAnswer(q: string): string[] {
+  return [
+    `关于「${q}」，下面是一些常用公式示例：`,
+    '',
+    '**行内公式**：质能方程 $E = mc^2$，欧拉恒等式 $e^{i\\pi} + 1 = 0$。',
+    '',
+    '**块级公式**（高斯积分）：',
+    '',
+    '$$',
+    '\\int_{-\\infty}^{\\infty} e^{-x^2} \\, dx = \\sqrt{\\pi}',
+    '$$',
+    '',
+    '**二次方程求根公式**：',
+    '',
+    '$$',
+    'x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}',
+    '$$',
+  ];
+}
+
+function imageAnswer(q: string): string[] {
+  return [
+    `这是一张与「${q}」相关的示例图：`,
+    '',
+    '![示例图片](https://picsum.photos/seed/xxchatai/640/360)',
+    '',
+    '点击图片可放大预览。',
   ];
 }
 
@@ -98,7 +152,17 @@ function showcaseAnswer(q: string): string[] {
     '  D --> E',
     '```',
     '',
-    '试试问我「对比 SSE 与 WebSocket」「写一个防抖函数」或「画个登录流程图」，我会给出更聚焦的回答。',
+    '### 数学公式',
+    '',
+    '行内：$\\sum_{i=1}^{n} i = \\frac{n(n+1)}{2}$',
+    '',
+    '块级：',
+    '',
+    '$$',
+    'E = mc^2',
+    '$$',
+    '',
+    '试试问我「对比 SSE 与 WebSocket」「写一个防抖函数」「画个登录流程图」或「数学公式示例」。',
   ];
 }
 
@@ -108,13 +172,17 @@ function buildMockMarkdown(query: string): string {
   const lower = q.toLowerCase();
 
   const wantsMermaid = /mermaid|流程图|时序图|流程|图表/.test(q);
+  const wantsMath = /公式|latex|math|积分|求导|方程|质能|欧拉/.test(lower);
   const wantsCode = /防抖|节流|debounce|throttle|函数|代码|typescript|javascript|\bts\b|\bjs\b/.test(lower);
   const wantsTable = /表格|对比|比较|区别|差异|sse|websocket/.test(lower);
+  const wantsImage = /图片|示例图|插入.*图|photo|image/.test(lower);
 
   let lines: string[];
   if (wantsMermaid) lines = mermaidAnswer(q);
+  else if (wantsMath) lines = mathAnswer(q);
   else if (wantsCode) lines = codeAnswer(q);
   else if (wantsTable) lines = tableAnswer(q);
+  else if (wantsImage) lines = imageAnswer(q);
   else lines = showcaseAnswer(q);
 
   return lines.join('\n');
@@ -136,7 +204,7 @@ export async function* mockStream(opts: StreamOptions): ChatStream {
 
   for (const chunk of chunkText(full)) {
     if (signal.aborted) return;
-    yield chunk;
+    yield { type: 'text', content: chunk };
     await sleep(18 + Math.floor(Math.random() * 22));
   }
 }

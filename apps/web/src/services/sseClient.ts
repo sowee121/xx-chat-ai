@@ -1,5 +1,5 @@
 import { fetchEventSource } from '@microsoft/fetch-event-source'
-import type { Provider, Role } from '@/lib/chat-types'
+import type { ChatMessage, Provider, Role, StreamDelta } from '@/lib/chat-types'
 
 export interface StreamMeta {
   sessionCode: string
@@ -8,7 +8,7 @@ export interface StreamMeta {
 
 export interface StreamCallbacks {
   onMeta?: (meta: StreamMeta) => void
-  onDelta: (content: string) => void
+  onDelta: (delta: StreamDelta) => void
   onDone?: (info: { sessionCode: string; finishReason: string }) => void
   onError?: (message: string) => void
 }
@@ -61,9 +61,12 @@ export async function streamChat(params: StreamParams, cb: StreamCallbacks): Pro
           case 'meta':
             cb.onMeta?.(JSON.parse(ev.data))
             break
-          case 'delta':
-            cb.onDelta(JSON.parse(ev.data).content)
+          case 'delta': {
+            const parsed = JSON.parse(ev.data) as Partial<StreamDelta> & { content?: string }
+            const type = parsed.type === 'reasoning' ? 'reasoning' : 'text'
+            if (parsed.content) cb.onDelta({ type, content: parsed.content })
             break
+          }
           case 'done':
             cb.onDone?.(JSON.parse(ev.data))
             ctrl.abort()

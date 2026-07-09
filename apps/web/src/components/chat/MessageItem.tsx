@@ -1,9 +1,11 @@
 import { useState } from 'react'
-import { Check, Copy } from 'lucide-react'
+import { Check, Copy, Pencil } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type { ChatMessage } from '@/lib/chat-types'
+import { useChatStore } from '@/stores/chatStore'
+import { ReasoningBlock } from './ReasoningBlock'
 import { MarkdownMessage } from './MarkdownMessage'
 import { styles } from './MessageItem.styles'
 
@@ -14,6 +16,7 @@ interface MessageItemProps {
 
 export function MessageItem({ message, streaming = false }: MessageItemProps) {
   const [copied, setCopied] = useState(false)
+  const prefillComposer = useChatStore((s) => s.prefillComposer)
 
   if (message.role === 'user') {
     const handleCopy = async () => {
@@ -34,11 +37,21 @@ export function MessageItem({ message, streaming = false }: MessageItemProps) {
             type="button"
             variant="ghost"
             size="icon"
-            className={cn(styles.copyBtn, copied && styles.copyBtnVisible)}
+            className={styles.actionBtn}
+            aria-label="编辑消息"
+            onClick={() => prefillComposer(message.content)}
+          >
+            <Pencil className={styles.actionIcon} />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className={cn(styles.actionBtn, copied && styles.actionBtnVisible)}
             aria-label={copied ? '已复制' : '复制消息'}
             onClick={() => void handleCopy()}
           >
-            {copied ? <Check className={styles.copyIcon} /> : <Copy className={styles.copyIcon} />}
+            {copied ? <Check className={styles.actionIcon} /> : <Copy className={styles.actionIcon} />}
           </Button>
           <div className={styles.userBubble}>{message.content}</div>
         </div>
@@ -46,18 +59,25 @@ export function MessageItem({ message, streaming = false }: MessageItemProps) {
     )
   }
 
-  const isEmptyStreaming = streaming && message.content.length === 0
+  const isEmptyStreaming =
+    streaming && message.content.length === 0 && !(message.reasoning?.length)
 
   return (
     <div className={styles.assistant}>
+      {message.reasoning ? (
+        <ReasoningBlock content={message.reasoning} streaming={streaming && !message.content} />
+      ) : null}
       {isEmptyStreaming ? (
-        <div className={styles.generating}>
-          <span className={styles.dot} />
-          正在生成…
+        <div className={styles.generatingBubble} aria-label="正在生成" role="status">
+          <span className={styles.generatingDots} aria-hidden>
+            <span className={styles.generatingDot} />
+            <span className={styles.generatingDot} />
+            <span className={styles.generatingDot} />
+          </span>
         </div>
-      ) : (
+      ) : message.content ? (
         <MarkdownMessage content={message.content} animating={streaming} />
-      )}
+      ) : null}
     </div>
   )
 }

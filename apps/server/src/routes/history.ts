@@ -24,4 +24,19 @@ export async function historyRoutes(app: FastifyInstance): Promise<void> {
       return { ok: true };
     },
   );
+
+  app.post<{ Body: { sessionCodes?: string[] } }>(
+    '/api/history/batch-delete',
+    async (request, reply) => {
+      const sessionCodes = request.body?.sessionCodes;
+      if (!Array.isArray(sessionCodes) || sessionCodes.length === 0) {
+        return reply.code(400).send({ error: 'sessionCodes required' });
+      }
+      if (!sessionCodes.every((c) => typeof c === 'string' && c.length > 0)) {
+        return reply.code(400).send({ error: 'invalid sessionCodes' });
+      }
+      historyStore.deleteSessions(sessionCodes);
+      return { ok: true, deleted: sessionCodes.length };
+    },
+  );
 }

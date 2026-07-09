@@ -111,6 +111,14 @@ export class SqliteHistoryStore implements HistoryStore {
   deleteSession(sessionCode: string): void {
     this.db.prepare(`DELETE FROM sessions WHERE session_code = ?`).run(sessionCode);
   }
+
+  deleteSessions(sessionCodes: string[]): void {
+    if (sessionCodes.length === 0) return;
+    const placeholders = sessionCodes.map(() => '?').join(', ');
+    this.db
+      .prepare(`DELETE FROM sessions WHERE session_code IN (${placeholders})`)
+      .run(...sessionCodes);
+  }
 }
 
 export const historyStore: HistoryStore = new SqliteHistoryStore();

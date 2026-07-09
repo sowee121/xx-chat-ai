@@ -23,20 +23,15 @@ function App() {
         <AppSidebar />
         <SidebarInset className={styles.inset}>
           <ChatHeader />
-          {hasMessages ? (
-            <>
-              <main className={styles.main}>
-                <MessageList />
-              </main>
-              <div className={styles.composerBar}>
-                <ChatComposer />
+          <main className={styles.chatMain}>
+            {hasMessages ? <MessageList /> : <HomeView />}
+            <div className={styles.composerOverlay}>
+              <div className={styles.composerFade} aria-hidden />
+              <div className={styles.composerInner}>
+                <ChatComposer autoFocus={!hasMessages} />
               </div>
-            </>
-          ) : (
-            <main className={styles.main}>
-              <HomeView />
-            </main>
-          )}
+            </div>
+          </main>
         </SidebarInset>
       </SidebarProvider>
     </TooltipProvider>

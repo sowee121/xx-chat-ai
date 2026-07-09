@@ -13,19 +13,26 @@ Vite 8 · React 19 · TypeScript 6 · shadcn/ui · Tailwind 4 · next-themes · 
 ## SSE 与状态
 
 - 流式请求只用 `@microsoft/fetch-event-source`；停止用 `AbortController`。
-- 事件：`meta` → `delta`* → `done` | `error`；在 store 累加 `content`。
+- 事件：`meta` → `delta`* → `done` | `error`。
+- `delta`：`{ type: 'reasoning' | 'text', content }`；store 分别累加 `message.reasoning` / `message.content`。
 - `provider` / `model` 持久化在 Zustand；流式中禁用 Provider 切换。
+- `prefillComposer(text)` → `ChatComposer` 回填输入框（用户消息编辑）。
 - Vite 代理 `/api` → `localhost:3001`。
 
 ## UI 布局（勿随意改）
 
-- ChatGPT + Grok 混合：用户右对齐气泡；AI 全宽 Streamdown（非气泡）。
-- Header：`ProviderMenu` + `ModelMenu`（仅 openai）+ 新对话 + 主题切换。
+- 用户右对齐 `bg-muted` 气泡；AI 全宽 Streamdown。
+- AI 推理：`ReasoningBlock`（顶栏「已深度思考」+ 左侧 `border-l-2` 正文，无背景）。
+- 等待首 token：`h-12` 与用户单行气泡同高的 muted 卡片 + 三点动画（无「正在生成」文案）。
+- Header：`ModelMenu` + `ProviderMenu`（`outline` 胶囊）+ 新建对话 + 主题切换。
+- 侧栏文案：**对话**（非「会话」）；按钮 **新建对话**。
+- 用户消息 hover：编辑（`Pencil`）+ 复制；编辑在复制按钮左侧。
 - 输入：`ChatComposer` 大圆角容器 + 圆形发送/停止。
 - 根节点必须 `TooltipProvider` + `SidebarProvider`（缺 TooltipProvider 会白屏）。
 
 ## Streamdown
 
+- 插件：`mermaidPlugin`（先原样后修复 + `barChart` 转换）、`mathPlugin`（`singleDollarTextMath`）。
 - 块级卡片圆角、toolbar 图标尺寸/顺序、图片 `cursor: zoom-in` 在 `index.css` 维护。
 - 图片预览用自研 `ImageLightbox`（Streamdown 无原生图片全屏）。
 - 不要依赖 Streamdown 代码块全屏能力。
@@ -36,6 +43,6 @@ Vite 8 · React 19 · TypeScript 6 · shadcn/ui · Tailwind 4 · next-themes · 
 
 ## 组件约定
 
-- shadcn 原语在 `components/ui/`；业务在 `components/chat/`、`components/layout/`。
+- shadcn 原语在 `components/ui/`；业务在 `components/chat/`。
 - 图标 lucide-react；发送/停止 `size-5`，操作区 18px。
 - 新增 shadcn 组件用 CLI，不手写 duplicate。

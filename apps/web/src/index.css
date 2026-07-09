@@ -8,6 +8,7 @@
 @source "../node_modules/@streamdown/code/dist/*.js";
 @source "../node_modules/@streamdown/mermaid/dist/*.js";
 @source "../node_modules/@streamdown/cjk/dist/*.js";
+@source "../node_modules/@streamdown/math/dist/*.js";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -87,6 +88,10 @@
     --sidebar-accent-foreground: oklch(0.205 0 0);
     --sidebar-border: oklch(0.922 0 0);
     --sidebar-ring: oklch(0.708 0 0);
+    /* Google 搜索框（google.com.hk .RNNXgb 实测） */
+    --composer-border: #dadce0;
+    --composer-shadow: 0 3px 10px rgba(31, 31, 31, 0.08);
+    --composer-shadow-focus: 0 2px 8px 1px rgba(64, 60, 67, 0.24);
 }
 
 .dark {
@@ -121,6 +126,9 @@
     --sidebar-accent-foreground: oklch(0.985 0 0);
     --sidebar-border: oklch(1 0 0 / 10%);
     --sidebar-ring: oklch(0.556 0 0);
+    --composer-border: oklch(1 0 0 / 14%);
+    --composer-shadow: 0 3px 10px rgba(0, 0, 0, 0.28);
+    --composer-shadow-focus: 0 2px 8px 1px rgba(0, 0, 0, 0.36);
 }
 
 @layer base {
@@ -150,6 +158,14 @@
   [data-streamdown="image"]
 ) {
   border-radius: var(--radius-lg);
+}
+
+/* KaTeX 块级公式横向溢出时可滚动 */
+.prose-message .katex-display {
+  margin: 0.75rem 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.25rem 0;
 }
 
 /* 卡片右上角工具按钮图标统一尺寸（Streamdown 原生混用 14/16px） */
@@ -195,6 +211,37 @@
 /* 图片可点击放大预览 */
 .prose-message [data-streamdown="image"] {
   cursor: zoom-in;
+}
+
+/* Mermaid 缩放控件 z-10 需低于底部输入悬浮层（z-20） */
+.prose-message [data-streamdown="mermaid-block"] .relative.flex.flex-col > .absolute {
+  z-index: 1;
+}
+
+/* 正在生成：三点交替跳动 */
+@keyframes generating-dot-bounce {
+  0%,
+  80%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+
+.generating-dot {
+  animation: generating-dot-bounce 1.2s ease-in-out infinite;
+}
+
+.generating-dot:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.generating-dot:nth-child(3) {
+  animation-delay: 0.3s;
 }
 
 /* Streamdown 工具栏按钮 */

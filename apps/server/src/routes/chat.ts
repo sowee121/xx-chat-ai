@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { stripThinkingTags } from '../lib/thinkingParser.js';
 import { getDefaultProvider } from '../providers/config.js';
 import { getProvider } from '../providers/index.js';
 import { historyStore } from '../store/sqlite.js';
@@ -60,7 +61,7 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
 
       send('meta', { sessionCode: session.sessionCode, title: session.title });
 
-      let full = '';
+      let fullText = '';
       try {
         const stream = getProvider(provider)({
           query: body.query,
@@ -71,15 +72,17 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
 
         for await (const delta of stream) {
           if (ac.signal.aborted) break;
-          full += delta;
-          send('delta', { content: delta });
+          if (delta.type === 'text') fullText += delta.content;
+          send('delta', delta);
         }
 
+        const textToSave = stripThinkingTags(fullText);
+
         if (ac.signal.aborted) {
-          // 客户端主动停止：连接已断，仅持久化已生成的部分
-          if (full) historyStore.appendMessage(session.sessionCode, 'assistant', full);
+          // 客户端主动停止：连接已断，仅持久化已生成的正文
+          if (textToSave) historyStore.appendMessage(session.sessionCode, 'assistant', textToSave);
         } else {
-          historyStore.appendMessage(session.sessionCode, 'assistant', full);
+          if (textToSave) historyStore.appendMessage(session.sessionCode, 'assistant', textToSave);
           send('done', { sessionCode: session.sessionCode, finishReason: 'stop' });
         }
       } catch (err) {

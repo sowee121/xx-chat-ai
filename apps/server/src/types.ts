@@ -22,7 +22,14 @@ export interface StreamOptions {
   model?: string;
 }
 
-/** 流式 provider：产出文本增量（delta） */
-export type ChatStream = AsyncGenerator<string, void, unknown>;
+export type StreamChunkType = 'reasoning' | 'text';
+
+export interface StreamChunk {
+  type: StreamChunkType;
+  content: string;
+}
+
+/** 流式 provider：产出 reasoning / text 增量 */
+export type ChatStream = AsyncGenerator<StreamChunk, void, unknown>;
 
 export type ChatProvider = (opts: StreamOptions) => ChatStream;

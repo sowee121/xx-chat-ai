@@ -15,24 +15,24 @@ export function ChatHeader() {
   return (
     <header className={styles.header}>
       <div className={styles.leading}>
-        <SidebarTrigger />
+        <SidebarTrigger iconClassName={styles.headerIcon} />
         <Button
           variant="ghost"
           size="icon"
-          aria-label="新对话"
+          aria-label="新建对话"
           disabled={!hasMessages}
           onClick={newChat}
         >
-          <SquarePen />
+          <SquarePen className={styles.headerIcon} />
         </Button>
       </div>
 
       <span className={styles.title}>XX Chat AI</span>
 
       <div className={styles.actions}>
-        <ProviderMenu />
         <ModelMenu />
-        <ModeToggle />
+        <ProviderMenu />
+        <ModeToggle iconClassName={styles.headerIcon} />
       </div>
     </header>
   )

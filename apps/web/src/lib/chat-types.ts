@@ -20,10 +20,18 @@ export interface ModelsResponse {
   defaultModel?: string
 }
 
+export type StreamChunkType = 'reasoning' | 'text'
+
+export interface StreamDelta {
+  type: StreamChunkType
+  content: string
+}
+
 export interface ChatMessage {
   id: string
   role: Role
   content: string
+  reasoning?: string
 }
 
 export interface SessionSummary {

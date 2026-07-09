@@ -16,7 +16,6 @@ export function MessageList() {
   const error = useChatStore((s) => s.error)
 
   const scrollRef = useRef<HTMLDivElement>(null)
-  const bottomRef = useRef<HTMLDivElement>(null)
   // 是否处于「贴底跟随」状态：用 ref 避免频繁 setState 触发重渲染
   const followRef = useRef(true)
   // 正在程序化平滑滚动到底：期间不因中间帧的滚动事件重新显示按钮
@@ -24,10 +23,15 @@ export function MessageList() {
   const [showJump, setShowJump] = useState(false)
 
   const count = messages.length
-  const lastContent = messages[count - 1]?.content ?? ''
+  const last = messages[count - 1]
+  const lastScrollKey = `${last?.content ?? ''}|${last?.reasoning ?? ''}`
 
   const scrollToBottom = (behavior: ScrollBehavior = 'auto') => {
-    bottomRef.current?.scrollIntoView({ block: 'end', behavior })
+    requestAnimationFrame(() => {
+      const el = scrollRef.current
+      if (!el) return
+      el.scrollTo({ top: el.scrollHeight - el.clientHeight, behavior })
+    })
   }
 
   const handleScroll = () => {
@@ -49,8 +53,6 @@ export function MessageList() {
     followRef.current = true
     jumpingRef.current = false
     setShowJump(false)
-    const el = scrollRef.current
-    if (el) el.scrollTop = el.scrollHeight
     scrollToBottom()
   }, [sessionCode])
 
@@ -64,7 +66,7 @@ export function MessageList() {
   // 流式增量：仅在贴底跟随时才自动滚动，用户上翻查看历史时不打扰
   useEffect(() => {
     if (followRef.current) scrollToBottom()
-  }, [lastContent])
+  }, [lastScrollKey])
 
   const jumpToBottom = () => {
     followRef.current = true
@@ -76,18 +78,20 @@ export function MessageList() {
   return (
     <div className={styles.wrap}>
       <div ref={scrollRef} className={styles.scroll} onScroll={handleScroll}>
-        <div className={styles.column}>
-          {messages.map((m, i) => (
-            <MessageItem key={m.id} message={m} streaming={isStreaming && i === count - 1} />
-          ))}
-          {error && <div className={styles.error}>{error}</div>}
-          <div ref={bottomRef} />
+        <div className={styles.gutter}>
+          <div className={styles.column}>
+            {messages.map((m, i) => (
+              <MessageItem key={m.id} message={m} streaming={isStreaming && i === count - 1} />
+            ))}
+            {error && <div className={styles.error}>{error}</div>}
+            <div className={styles.bottomSpacer} aria-hidden />
+          </div>
         </div>
       </div>
 
       <Button
         size="icon"
-        variant="secondary"
+        variant="ghost"
         className={cn(styles.jump, showJump ? styles.jumpShown : styles.jumpHidden)}
         onClick={jumpToBottom}
         aria-label="回到底部"

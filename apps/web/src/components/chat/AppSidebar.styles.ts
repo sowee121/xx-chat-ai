@@ -1,19 +1,45 @@
 export const styles = {
-  header: 'shrink-0 gap-3 px-4 pb-4 pt-5',
-  newBtn: 'h-11 w-full justify-start gap-2.5 rounded-xl px-4 text-sm font-medium',
+  header: 'h-14 shrink-0 flex-row items-center gap-0 px-4 py-0',
+  newBtn:
+    'h-11 w-full justify-center gap-2.5 rounded-xl border-0 bg-background px-3 text-sm font-medium shadow-sm transition-[box-shadow,background-color] hover:bg-background hover:shadow-md active:shadow-sm',
   newBtnIcon: 'size-[1.125rem] shrink-0',
   content: 'min-h-0 flex-1 overflow-hidden pt-1 pb-1',
   group: 'flex min-h-0 flex-1 flex-col gap-1 p-0',
-  groupLabel: 'h-auto shrink-0 px-3 py-2 text-xs font-medium tracking-wide',
-  menu: 'gap-1.5 px-3',
+  groupHeader: 'flex shrink-0 items-center justify-between gap-2 px-4 py-2',
+  groupLabel: 'pl-3 text-sm font-medium tracking-wide text-sidebar-foreground/70',
+  batchToggle: 'text-muted-foreground shrink-0',
+  batchToggleIcon: 'size-4',
+  batchCount: 'text-sm font-medium tracking-wide text-sidebar-foreground/70',
+  batchSelect: 'flex min-w-0 items-center gap-2 pl-3',
+  batchActions: 'flex shrink-0 items-center gap-0.5',
+  batchActionBtn: 'h-7 !rounded-full px-3 text-xs',
+  menu: 'gap-1.5 px-4',
   sessionScroll:
     'min-h-0 flex-1 overflow-y-scroll [scrollbar-color:color-mix(in_oklch,var(--sidebar-foreground)_25%,transparent)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-sidebar-foreground/25 [&::-webkit-scrollbar-track]:bg-transparent',
   sessionRow:
-    'group/session flex h-10 w-full cursor-pointer items-center gap-1 rounded-xl pl-3 pr-1.5 text-sm transition-colors hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:outline-none',
-  sessionRowActive: 'bg-sidebar-accent font-medium text-sidebar-accent-foreground',
+    'group/session flex h-10 w-full cursor-pointer items-center gap-1 rounded-xl pl-3 pr-1.5 text-sm transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:outline-none',
+  sessionRowBatch: 'gap-2',
+  sessionRowSelected: 'bg-muted',
+  sessionRowActive: 'bg-muted text-foreground',
   sessionTitle: 'min-w-0 flex-1 truncate text-left',
+  checkbox:
+    'border-sidebar-border text-primary-foreground flex size-4 shrink-0 items-center justify-center rounded-[4px] border bg-background transition-colors',
+  checkboxChecked: 'border-primary bg-primary text-primary-foreground',
+  checkboxIndeterminate: 'border-primary bg-primary text-primary-foreground',
+  checkboxIcon: 'size-3',
   sessionDelete:
-    'text-muted-foreground flex shrink-0 items-center justify-center rounded-lg p-1.5 opacity-0 transition-[opacity,background-color,color] group-hover/session:opacity-100 hover:bg-foreground/10 hover:text-foreground focus-visible:opacity-100',
+    'text-destructive flex size-8 shrink-0 items-center justify-center rounded-full opacity-0 transition-[opacity,background-color,color] group-hover/session:opacity-100 hover:bg-destructive/10 hover:text-destructive focus-visible:opacity-100',
   deleteIcon: 'size-4',
-  empty: 'text-muted-foreground px-3 py-4 text-sm',
+  empty: 'text-muted-foreground py-4 pl-7 pr-4 text-sm',
+  deleteDialogContent: 'sm:max-w-[22rem]',
+  deleteDialogBody: 'flex flex-col items-center gap-2 text-center',
+  deleteDialogMedia:
+    'flex size-10 shrink-0 items-center justify-center rounded-xl bg-destructive/10 text-destructive [&_svg]:size-5',
+  deleteDialogTitle: 'text-base font-medium',
+  deleteDialogDescription: 'text-sm text-balance text-muted-foreground',
+  deleteDialogFooter: 'flex-col-reverse gap-2 sm:flex-row sm:justify-stretch sm:gap-3',
+  deleteDialogCancel:
+    'h-10 w-full !rounded-full border border-border bg-background px-6 text-sm font-medium shadow-none hover:bg-muted sm:flex-1',
+  deleteDialogAction:
+    'h-10 w-full !rounded-full border-0 bg-destructive/10 px-6 text-sm font-semibold text-destructive shadow-none hover:bg-destructive/15 sm:flex-1',
 } as const

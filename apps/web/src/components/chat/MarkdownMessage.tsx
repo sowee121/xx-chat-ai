@@ -1,8 +1,10 @@
 import { useState, type MouseEvent } from 'react'
 import { Streamdown } from 'streamdown'
 import { code } from '@streamdown/code'
-import { mermaid } from '@streamdown/mermaid'
 import { cjk } from '@streamdown/cjk'
+
+import { mermaid } from '@/lib/mermaidPlugin'
+import { math } from '@/lib/mathPlugin'
 
 import { ImageLightbox } from './ImageLightbox'
 import { styles } from './MarkdownMessage.styles'
@@ -25,7 +27,7 @@ export function MarkdownMessage({ content, animating = false }: MarkdownMessageP
 
   return (
     <div className={styles.root} onClick={handleClick}>
-      <Streamdown plugins={{ code, mermaid, cjk }} animated isAnimating={animating}>
+      <Streamdown plugins={{ code, mermaid, math, cjk }} animated isAnimating={animating}>
         {content}
       </Streamdown>
       {preview && (

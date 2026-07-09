@@ -12,7 +12,7 @@ alwaysApply: true
 - **全栈 AI 聊天**：React 前端 + Fastify 后端，SSE 流式对话。
 - **硬性约束**：前端必须用 **React + `@microsoft/fetch-event-source`**，禁止换 SSE 客户端库。
 - **Provider 命名**：界面与 API 展示用 **OpenAI**；文档中说明其为 OpenAI API 兼容协议（edgefn、DeepSeek 等）。
-- **范围外不做**：Typewriter、LaTeX、多模态上传、代码块全屏（Streamdown 不支持）。
+- **范围外不做**：Typewriter、多模态上传、代码块全屏（Streamdown 不支持）、tool/citation 结构化片段。
 
 ## 仓库结构
 
@@ -39,10 +39,13 @@ docs/plan.md  全栈方案（单一事实来源）
 | 区域 | 路径 |
 | --- | --- |
 | 聊天状态 / SSE | `apps/web/src/stores/chatStore.ts` |
+| 推理块 UI | `apps/web/src/components/chat/ReasoningBlock.tsx` |
+| Mermaid 修复 | `apps/web/src/lib/mermaidPlugin.ts`、`sanitizeMermaid.ts` |
 | 根布局 | `apps/web/src/App.tsx`（须包 `TooltipProvider`） |
 | Streamdown 覆盖 | `apps/web/src/index.css` |
 | 聊天 SSE | `apps/server/src/routes/chat.ts` |
-| OpenAI | `apps/server/src/providers/openai.ts` |
+| OpenAI + 推理 | `apps/server/src/providers/openai.ts` |
+| 思考解析 | `apps/server/src/lib/thinkingParser.ts`、`reasoningDelta.ts` |
 | 本地配置 | `apps/server/src/config/local.ts` |
 
 ## 任务收尾

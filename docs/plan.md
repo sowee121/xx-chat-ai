@@ -16,7 +16,7 @@
 
 ## 1. 项目目标
 
-**用户纯文本输入 → SSE 流式推送 → 累加 content → 多格式渲染 → 可停止 → 历史会话 → Mock/OpenAI 切换 → 动态选模型**
+**用户纯文本输入 → SSE 流式推送 → 累加 content / reasoning → 多格式渲染 → 可停止 → 历史对话 → Mock/OpenAI 切换 → 动态选模型**
 
 硬性约束：前端 **React + `@microsoft/fetch-event-source`**。
 
@@ -25,11 +25,13 @@
 | 已做 | 不做 |
 | --- | --- |
 | 纯文本输入、SSE 流式、停止生成 | Typewriter 打字机效果 |
-| GFM 表格 / 代码 / 图片 / Mermaid | LaTeX 公式 |
-| Mock 关键词意图 + OpenAI | 多模态上传 |
-| SQLite 历史 + 侧栏会话 | — |
+| GFM 表格 / 代码 / 图片 / Mermaid / KaTeX 公式 | 多模态上传 |
+| 推理块展示（`ReasoningBlock` 折叠） | tool / citation 结构化片段 |
+| Mock 关键词意图 + OpenAI 兼容端点 | 代码块全屏（Streamdown 不支持） |
+| SQLite 历史 + 侧栏对话列表 | — |
 | 图片点击放大预览（自研 Lightbox） | Streamdown 原生图片全屏（不支持） |
-| 动态拉取供应商模型列表 | 代码块全屏（Streamdown 不支持，用户暂缓） |
+| 动态拉取供应商模型列表 | — |
+| 用户消息编辑回填输入框 | — |
 
 ---
 
@@ -44,13 +46,13 @@
 | 后端 | Fastify 5 + TypeScript |
 | SSE | `@microsoft/fetch-event-source` + AbortController |
 | 状态 | Zustand 5 + persist（`provider` / `model`） |
-| Markdown | Streamdown + `@streamdown/code` + `@streamdown/mermaid` + `@streamdown/cjk` |
+| Markdown | Streamdown + `@streamdown/code` + `@streamdown/mermaid` + `@streamdown/math` + `@streamdown/cjk` |
 | **样式栈** | shadcn/ui + Tailwind CSS 4（`@tailwindcss/vite`） |
 | **UI 组件** | shadcn CLI → `components/ui/*`（Button、Input、Sidebar、DropdownMenu、Tooltip…） |
 | **图标** | lucide-react；操作图标 18px、发送/停止图标 20px（`size-5`） |
 | **主题** | 官网 **Maia + Neutral** preset `b6iJYxYW` + `next-themes` |
 | **字体** | Source Sans 3 Variable（init 后实际使用，非 Inter） |
-| **视觉** | ChatGPT/Grok 简约；全页 `bg-background`；大圆角 `--radius: 1rem` |
+| **视觉** | 简约对话风；全页 `bg-background`；大圆角 `--radius: 1rem` |
 | Provider | `DropdownMenu` 切换 Mock / OpenAI（已移除 Switch） |
 | 模型 | Header `ModelMenu` 动态下拉（`GET /api/providers/openai/models`） |
 | 大模型 | `openai` SDK 流式代理 OpenAI API（兼容协议，可接 edgefn、DeepSeek 等）；配置见 `config.local.json`（gitignore） |
@@ -79,8 +81,8 @@ pnpm add next-themes streamdown @streamdown/code @streamdown/mermaid @streamdown
 | `--radius`（根） | `1rem` |
 | Button / Input | `rounded-lg` |
 | Streamdown 块级卡片（代码/表格/图片/Mermaid） | 统一 `rounded-lg`（`--radius-lg`） |
-| 聊天输入外容器 | ChatGPT 风 `rounded-full` 胶囊形 |
-| 发送/停止按钮 | Grok 风 `rounded-full`（`size-9`） |
+| 聊天输入外容器 | 胶囊形 `rounded-full` |
+| 发送/停止按钮 | 圆形 `rounded-full`（`size-9`） |
 | 停止图标 | 实心圆角小方块 `<span class="size-3.5 rounded-[4px] bg-current" />` |
 
 ### 样式抽离约定（`.cursor/rules/ui-styling.mdc`）
@@ -92,35 +94,37 @@ pnpm add next-themes streamdown @streamdown/code @streamdown/mermaid @streamdown
 
 ---
 
-## 3. UI 布局（ChatGPT + Grok 混合风 · 已实现）
+## 3. UI 布局（已实现）
 
 ```
 ┌─ Sidebar ────┬─ 主区域 ─────────────────────────────────────┐
-│ [新对话]      │ [≡][✎]      XX Chat AI      [Mock▾][模型▾] [🌓] │
-│ 历史会话列表   ├──────────────────────────────────────────────┤
-│ (hover 删除)  │                                              │
-│              │   空状态：居中「嘻嘻，想问点什么呢？」+ 快捷标签       │
+│ [新建对话]    │ [≡][✎]      XX Chat AI      [模型▾][Mock▾] [🌓] │
+│ 历史对话列表  ├──────────────────────────────────────────────┤
+│ (hover 删除 / 批量管理)  │                                              │
+│              │   空状态：居中「嘻嘻，想问点什么？」+ 快捷标签       │
 │              │   有对话：用户右对齐气泡 / AI 全宽 Streamdown    │
+│              │          推理中：ReasoningBlock + 等待卡片(三点) │
 │              │                                              │
 │              │   ╭──────────────────────────────────────╮   │
-│              │   │  嘻嘻，想问点什么呢？              ( ↑ )    │   │  ChatGPT 大圆角容器
-│              │   ╰──────────────────────────────────────╯   │  Grok 圆形发送/停止
-│              │   Mock/OpenAI 模式提示文案                    │
+│              │   │  嘻嘻，想问点什么？              ( ↑ )    │   │
+│              │   ╰──────────────────────────────────────╯   │
+│              │   底部渐变过渡 + 悬浮输入区                    │
 └──────────────┴──────────────────────────────────────────────┘
 ```
 
 | 区域 | 实现 |
 | --- | --- |
-| 侧栏 | `AppSidebar` + shadcn `Sidebar`（offcanvas）；顶部留白加大；新对话/列表项 `h-11` 无前置图标；`TooltipProvider` 包裹（必须，否则有历史会话时白屏） |
-| 顶栏 | `ChatHeader`：左 `SidebarTrigger` + 新对话；中品牌标题居中；右 `ProviderMenu` + `ModelMenu` + `ModeToggle` |
+| 侧栏 | `AppSidebar` + shadcn `Sidebar`（offcanvas）；「新建对话」居中；历史对话列表；批量选择与删除；`TooltipProvider` 包裹（必须，否则白屏） |
+| 顶栏 | `ChatHeader`：左 `SidebarTrigger` + 新建对话；中品牌标题；右 `ModelMenu` + `ProviderMenu` + `ModeToggle` |
 | 空状态 | `HomeView`：居中标题 + `ChatComposer` + 快捷标签 |
-| 用户消息 | 右对齐圆角气泡（Grok 风）；悬浮左侧显示复制按钮 |
-| AI 消息 | 全宽 `MarkdownMessage`（Streamdown），非气泡 |
-| 输入区 | `ChatComposer`：ChatGPT 统一大圆角容器 + 内嵌无边框 `Input` + Grok 圆形按钮 |
-| Provider | `ProviderMenu`（DropdownMenu）；流式中禁用切换 |
-| 模型 | `ModelMenu`（仅 openai 模式）；启动时拉取列表；选择持久化 |
-| 智能滚动 | 贴底才跟随；离开底部显示「回到底部」圆形按钮（opacity/scale 过渡） |
-| 图片 | 点击 `img[data-streamdown="image"]` → `ImageLightbox` 全屏预览 |
+| 用户消息 | 右对齐 `bg-muted` 圆角气泡；hover 显示编辑（回填输入框）+ 复制 |
+| AI 消息 | 全宽 `MarkdownMessage`；可选 `ReasoningBlock`（顶栏文案 + 左侧竖线正文） |
+| 等待回复 | 与用户气泡同高的 `bg-muted` 卡片，内三点交替动画（无文案） |
+| 输入区 | `ChatComposer` 悬浮底部；支持 `prefillComposer` 回填编辑 |
+| Provider | `ProviderMenu`（`outline` 胶囊）；流式中禁用 |
+| 模型 | `ModelMenu`（仅 openai）；可搜索过滤 |
+| 智能滚动 | 贴底跟随；离开底部显示「回到底部」 |
+| 图片 | 点击 → `ImageLightbox` |
 
 ### Streamdown 样式覆盖（`index.css`）
 
@@ -131,15 +135,10 @@ pnpm add next-themes streamdown @streamdown/code @streamdown/mermaid @streamdown
 | 工具栏图标垂直居中 | `button:has(>svg)` + `div.relative:has(>button)` → `inline-flex` |
 | 工具按钮顺序 | 复制 → 下载 → 全屏（`code-block-copy-button { order: -1 }`） |
 | 图片可点预览 | `[data-streamdown="image"] { cursor: zoom-in }` |
+| Mermaid 兜底 | `mermaidPlugin` 先原样渲染，失败再 `sanitizeMermaid`；`barChart` 伪语法转 `xychart-beta` |
+| 三点等待动画 | `.generating-dot` keyframes（`index.css`） |
 
 > Streamdown 原生：`table`/`mermaid` 有 fullscreen；`code`/`image` 无 fullscreen；图片预览为自研 `ImageLightbox`。
-
-### 底栏提示文案
-
-| Provider | 文案 |
-| --- | --- |
-| mock | Mock 模式：回答为本地模拟内容 |
-| openai | OpenAI 模式：回答由大模型生成 |
 
 ---
 
@@ -157,8 +156,8 @@ sequenceDiagram
     Vite->>API: SSE 转发
     API->>DB: ensureSession / appendMessage
     API->>LLM: stream completions (model from body)
-    LLM-->>Browser: delta chunks
-    Browser->>Browser: Streamdown 渲染
+    LLM-->>Browser: delta reasoning|text
+    Browser->>Browser: ReasoningBlock + Streamdown
     Browser->>API: GET /api/providers/openai/models
     API->>LLM: GET /v1/models
     LLM-->>Browser: 模型列表下拉
@@ -195,20 +194,26 @@ xx-chat-ai/
 │   │       │       ├── HomeView.tsx + .styles.ts
 │   │       │       ├── MessageList.tsx + .styles.ts
 │   │       │       ├── MessageItem.tsx + .styles.ts
+│   │       │       ├── ReasoningBlock.tsx + .styles.ts
 │   │       │       ├── MarkdownMessage.tsx + .styles.ts
 │   │       │       ├── ImageLightbox.tsx + .styles.ts
 │   │       │       ├── ProviderMenu.tsx + .styles.ts
 │   │       │       └── ModelMenu.tsx + .styles.ts
+│   │       ├── lib/
+│   │       │   ├── chat-types.ts
+│   │       │   ├── mermaidPlugin.ts | sanitizeMermaid.ts | mathPlugin.ts
 │   │       ├── stores/chatStore.ts
 │   │       ├── services/sseClient.ts | historyApi.ts | providerApi.ts
-│   │       └── lib/chat-types.ts
 │   └── server/
 │       ├── config.local.example.json   # 模板（进仓库）
 │       ├── config.local.json           # 真实 Key（gitignore，不进仓库）
 │       ├── data/chat.db                # SQLite（gitignore）
 │       └── src/
 │           ├── index.ts
-│           ├── config/local.ts           # 读取 config.local.json
+│           ├── config/local.ts
+│           ├── lib/
+│           │   ├── thinkingParser.ts   # 流式思考标签 → reasoning/text
+│           │   └── reasoningDelta.ts   # delta 多字段推理归一化
 │           ├── providers/
 │           │   ├── mock.ts             # 关键词意图 mock
 │           │   ├── openai.ts           # SDK 流式 + models.list
@@ -243,15 +248,35 @@ xx-chat-ai/
 }
 ```
 
-事件：`meta` → `delta`* → `done` | `error`；客户端 AbortController 停止时服务端持久化已生成部分。
+事件：`meta` → `delta`* → `done` | `error`；客户端 AbortController 停止时服务端持久化**已生成的正文**（不含推理块）。
+
+**delta 载荷**（2026-07 扩展）：
+
+```ts
+{ type: 'reasoning' | 'text', content: string }
+```
+
+- `reasoning`：思考过程，仅当前轮展示，**不落库、不回传**上游 API。
+- `text`：最终回答，累加写入 SQLite `messages.content`。
+
+**Provider 推理归一化**（`openai.ts` + `lib/`）：
+
+1. 优先 `delta.reasoning_content` / `reasoning` / `thinking` / `thinking_content` / `thinking_blocks`
+2. 否则对 `content` 做流式标签解析（`think`、`redacted_thinking`、`reasoning`、`cot` 等）
+3. 普通模型无推理字段时全部当 `text`
+
+系统提示要求数值图用 `xychart-beta`，禁止 `barChart`。
 
 ### 历史
 
+界面文案统一用 **对话**（不用「会话」）。默认标题 fallback：`新建对话`。
+
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/api/history` | 会话列表（按 `updatedAt` 降序） |
-| GET | `/api/history/:sessionCode` | 会话详情 + messages |
-| DELETE | `/api/history/:sessionCode` | 删除会话（级联消息） |
+| GET | `/api/history` | 对话列表（按 `updatedAt` 降序） |
+| GET | `/api/history/:sessionCode` | 对话详情 + messages（仅正文） |
+| DELETE | `/api/history/:sessionCode` | 删除对话（级联消息） |
+| POST | `/api/history/batch-delete` | 批量删除，`{ sessionCodes: string[] }` |
 
 ### Provider / 模型
 
@@ -318,8 +343,8 @@ cp apps/server/config.local.example.json apps/server/config.local.json
 ### Phase 2 — 体验 ✅
 
 - [x] 贴底智能滚动 + 「回到底部」按钮（过渡动画 + 防闪烁）
-- [x] SQLite 历史 + Sidebar 会话列表（新建/切换/删除）
-- [x] Grok/ChatGPT 混合 UI + 样式抽离 + Streamdown 卡片/toolbar 统一
+- [x] SQLite 历史 + Sidebar 对话列表（新建/切换/删除/批量）
+- [x] 聊天 UI + 样式抽离 + Streamdown 卡片/toolbar 统一
 - [x] 图片点击放大 `ImageLightbox`
 
 ### Phase 3 — 真实模型 ✅
@@ -330,6 +355,16 @@ cp apps/server/config.local.example.json apps/server/config.local.json
 - [x] `GET /api/providers/openai/models` 动态模型列表
 - [x] Header `ProviderMenu` + `ModelMenu` 运行时切换
 - [x] 401/404/429 等错误中文提示
+
+### Phase 4 — 推理与体验增强 ✅
+
+- [x] 推理块分离：SSE `reasoning` / `text` + `ReasoningBlock` 折叠 UI
+- [x] `thinkingParser` + `reasoningDelta` 多厂商兼容（字段优先 + 标签兜底）
+- [x] 历史仅存正文；多轮上下文不回传推理
+- [x] KaTeX 数学（`@streamdown/math`）
+- [x] Mermaid `barChart` 自动转 `xychart-beta`
+- [x] 用户消息编辑回填；等待回复三点动画卡片
+- [x] 界面文案：统一「对话」；「新建对话」
 
 ---
 
@@ -359,9 +394,13 @@ pnpm build   # web + server
 | 问题 | 修复 |
 | --- | --- |
 | SSE 流提前断开 | `reply.raw.on('close')` 替代 `request.raw.on('close')` |
-| 侧栏有历史会话后白屏 | 根节点补 `TooltipProvider`（Sidebar tooltip 依赖） |
+| 侧栏有历史对话后白屏 | 根节点补 `TooltipProvider`（Sidebar tooltip 依赖） |
 | 工具栏图标不齐/顺序乱 | `index.css` flex 居中 + `order:-1` 统一复制优先 |
 | 回到底部按钮闪烁 | `jumpingRef` 防止平滑滚动中间帧重新显示 |
+| Mermaid `barChart` 报错 | `convertInvalidBarChart` → `xychart-beta` |
+| edgefn R1 无 `reasoning_content` | `content` 内 `redacted_thinking` 标签流式解析 |
+
+**待修复 Bug 排期**：见 [`docs/bugs-plan.md`](./bugs-plan.md)（2026-07 代码审查录入，尚未改代码）。
 
 ---
 

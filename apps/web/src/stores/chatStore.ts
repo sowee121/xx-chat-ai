@@ -4,6 +4,7 @@ import type { ChatMessage, Provider, ProviderInfo, SessionSummary } from '@/lib/
 import { streamChat } from '@/services/sseClient'
 import {
   deleteSession as deleteSessionApi,
+  deleteSessions as deleteSessionsApi,
   fetchSession,
   fetchSessions,
 } from '@/services/historyApi'
@@ -26,9 +27,12 @@ interface ChatState {
   error?: string
   sessions: SessionSummary[]
   _abort?: AbortController
+  composerPrefillSeq: number
+  composerPrefillText: string
 
   setProvider: (provider: Provider) => void
   setModel: (model: string) => void
+  prefillComposer: (text: string) => void
   send: (query: string) => Promise<void>
   stop: () => void
   newChat: () => void
@@ -37,6 +41,7 @@ interface ChatState {
   loadSessions: () => Promise<void>
   openSession: (sessionCode: string) => Promise<void>
   removeSession: (sessionCode: string) => Promise<void>
+  removeSessions: (sessionCodes: string[]) => Promise<void>
 }
 
 export const useChatStore = create<ChatState>()(
@@ -55,6 +60,8 @@ export const useChatStore = create<ChatState>()(
       error: undefined,
       sessions: [],
       _abort: undefined,
+      composerPrefillSeq: 0,
+      composerPrefillText: '',
 
       setProvider: (provider) => {
         const option = get().providerOptions.find((p) => p.id === provider)
@@ -67,6 +74,12 @@ export const useChatStore = create<ChatState>()(
       },
 
       setModel: (model) => set({ model }),
+
+      prefillComposer: (text) =>
+        set((s) => ({
+          composerPrefillText: text,
+          composerPrefillSeq: s.composerPrefillSeq + 1,
+        })),
 
       loadModels: async () => {
         try {
@@ -133,7 +146,7 @@ export const useChatStore = create<ChatState>()(
             _abort: undefined,
           })
         } catch (e) {
-          set({ error: e instanceof Error ? e.message : '加载会话失败' })
+          set({ error: e instanceof Error ? e.message : '加载对话失败' })
         }
       },
 
@@ -144,6 +157,18 @@ export const useChatStore = create<ChatState>()(
           // 忽略删除错误，仍尝试刷新列表
         }
         if (get().sessionCode === sessionCode) get().newChat()
+        await get().loadSessions()
+      },
+
+      removeSessions: async (sessionCodes) => {
+        if (sessionCodes.length === 0) return
+        try {
+          await deleteSessionsApi(sessionCodes)
+        } catch {
+          // 忽略删除错误，仍尝试刷新列表
+        }
+        const current = get().sessionCode
+        if (current && sessionCodes.includes(current)) get().newChat()
         await get().loadSessions()
       },
 
@@ -159,7 +184,7 @@ export const useChatStore = create<ChatState>()(
 
         const history = state.messages.map((m) => ({ role: m.role, content: m.content }))
         const userMsg: ChatMessage = { id: uid(), role: 'user', content: trimmed }
-        const assistantMsg: ChatMessage = { id: uid(), role: 'assistant', content: '' }
+        const assistantMsg: ChatMessage = { id: uid(), role: 'assistant', content: '', reasoning: '' }
 
         const ac = new AbortController()
         set({
@@ -169,12 +194,22 @@ export const useChatStore = create<ChatState>()(
           _abort: ac,
         })
 
-        const appendToAssistant = (delta: string) =>
+        const appendToAssistant = (delta: { type: 'reasoning' | 'text'; content: string }) =>
           set((s) => {
             const messages = s.messages.slice()
             const last = messages[messages.length - 1]
             if (last && last.role === 'assistant') {
-              messages[messages.length - 1] = { ...last, content: last.content + delta }
+              if (delta.type === 'reasoning') {
+                messages[messages.length - 1] = {
+                  ...last,
+                  reasoning: (last.reasoning ?? '') + delta.content,
+                }
+              } else {
+                messages[messages.length - 1] = {
+                  ...last,
+                  content: last.content + delta.content,
+                }
+              }
             }
             return { messages }
           })

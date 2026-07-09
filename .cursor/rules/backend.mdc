@@ -12,7 +12,7 @@ Fastify 5 · TypeScript 6 · openai SDK · better-sqlite3
 
 ## 路由
 
-- 聊天：`POST /api/chat` — SSE，`reply.raw` 流式写出；`close` 时持久化已生成内容。
+- 聊天：`POST /api/chat` — SSE，`reply.raw` 流式写出；`close` 时持久化已生成**正文**。
 - 历史：`/api/history` CRUD，实现见 `store/sqlite.ts`。
 - Provider：`GET /api/providers`、`GET /api/providers/openai/models`（10min 缓存）。
 
@@ -20,14 +20,19 @@ Fastify 5 · TypeScript 6 · openai SDK · better-sqlite3
 
 ```
 providers/
-  mock.ts    关键词意图，本地多格式 showcase
-  openai.ts  openai SDK 流式 + models.list
+  mock.ts    关键词意图，产出 { type: 'text', content }
+  openai.ts  openai SDK 流式 + models.list + 推理归一化
   config.ts  可用性探测；label 为「OpenAI」
   index.ts   按 provider 分发
+lib/
+  thinkingParser.ts   流式标签解析 → reasoning | text
+  reasoningDelta.ts   delta 多字段推理提取
 ```
 
-- 新增供应商：加 provider 模块 + `config` 注册 + 必要时新路由；保持 SSE 事件格式一致。
-- 错误信息用户可见部分用中文；内部日志可英文。
+- `ChatStream` 产出 `StreamChunk { type: 'reasoning' | 'text', content: string }`，勿改回裸 `string`。
+- `openai.ts`：先 `extractReasoningFromDelta`，再对 `content` 走 `ThinkingStreamParser`；`finally` 中 `flush()`。
+- 历史 `appendMessage` 只存 `text`；落库前 `stripThinkingTags()`。
+- 系统提示：Mermaid 数值图用 `xychart-beta`，禁止 `barChart`。
 
 ## 配置
 
@@ -39,11 +44,14 @@ providers/
 
 ```ts
 // meta → delta (多次) → done | error
-{ type: 'meta', sessionCode, messageId }
-{ type: 'delta', content: string }
-{ type: 'done' }
-{ type: 'error', message: string }
+event: meta   data: { sessionCode, title }
+event: delta  data: { type: 'reasoning' | 'text', content: string }
+event: done   data: { sessionCode, finishReason }
+event: error  data: { message: string }
 ```
+
+- 缺省 `type` 时前端按 `text` 处理（向后兼容）。
+- 多轮 `messages` 仅含 `content` 正文，不含 `reasoning`。
 
 ## 注意
 
