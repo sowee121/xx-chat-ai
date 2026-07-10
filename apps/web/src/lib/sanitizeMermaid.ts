@@ -19,6 +19,31 @@ function escapeMermaidTitle(title: string): string {
   return `"${title.replace(/"/g, '\\"')}"`
 }
 
+function quoteXychartCategoryLabel(label: string): string {
+  const trimmed = label.trim()
+  if (!trimmed) return trimmed
+  if (isQuoted(trimmed)) return trimmed
+  // Mermaid：非纯 ASCII 单词标识符需加引号（如 1月、含空格标签）
+  if (/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(trimmed)) return trimmed
+  return quoteLabel(trimmed)
+}
+
+/**
+ * 修复 xychart-beta 分类轴标签：为中文等非 ASCII 标签补引号。
+ */
+export function fixXychartBetaSyntax(code: string): string {
+  const source = normalizeMermaidSource(code)
+  if (!/^xychart-beta\b/im.test(source)) return source
+
+  return source.replace(
+    /^(\s*x-axis\s+(?:"[^"]*"\s+)?)\[([^\]]+)\]/gim,
+    (_, prefix: string, inner: string) => {
+      const labels = inner.split(',').map((s) => quoteXychartCategoryLabel(s))
+      return `${prefix}[${labels.join(', ')}]`
+    },
+  )
+}
+
 /**
  * 部分模型会输出不存在的 barChart 语法，转为 Mermaid 支持的 xychart-beta。
  */
@@ -70,7 +95,7 @@ export function convertInvalidBarChart(code: string): string | null {
 
     return `xychart-beta
     title ${escapeMermaidTitle(title)}
-    x-axis [${xLabels.join(', ')}]
+    x-axis [${xLabels.map(quoteXychartCategoryLabel).join(', ')}]
     y-axis ${yAxisQuoted} 0 --> ${yMax}
 ${seriesLines}`
   }
@@ -80,7 +105,7 @@ ${seriesLines}`
 
   return `xychart-beta
     title ${escapeMermaidTitle(title)}
-    x-axis [${names.join(', ')}]
+    x-axis [${names.map(quoteXychartCategoryLabel).join(', ')}]
     y-axis ${yAxisQuoted} 0 --> ${yMax}
     bar [${vals.join(', ')}]`
 }

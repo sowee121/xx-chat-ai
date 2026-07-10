@@ -2,7 +2,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import Database from 'better-sqlite3';
-import type { Role } from '../types.js';
+import type { Role, StreamChunk } from '../types.js';
 import type { HistoryStore, Session, SessionSummary, StoredMessage } from './history.js';
 import { titleFromQuery } from './history.js';
 
@@ -42,7 +42,30 @@ export class SqliteHistoryStore implements HistoryStore {
       );
       CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_code, id);
       CREATE INDEX IF NOT EXISTS idx_sessions_updated ON sessions(updated_at DESC);
+      CREATE TABLE IF NOT EXISTS stream_replay_cache (
+        message_id   INTEGER PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,
+        provider     TEXT    NOT NULL,
+        model        TEXT    NOT NULL,
+        deltas_json  TEXT    NOT NULL
+      );
     `);
+  }
+
+  private getLastMessagePair(sessionCode: string): { user: StoredMessage; assistant: StoredMessage } | null {
+    const rows = this.db
+      .prepare(
+        `SELECT id, role, content, ts
+         FROM messages
+         WHERE session_code = ?
+         ORDER BY id ASC`,
+      )
+      .all(sessionCode) as StoredMessage[];
+
+    if (rows.length < 2) return null;
+    const assistant = rows[rows.length - 1];
+    const user = rows[rows.length - 2];
+    if (assistant.role !== 'assistant' || user.role !== 'user' || assistant.id == null) return null;
+    return { user, assistant };
   }
 
   listSessions(): SessionSummary[] {
@@ -69,7 +92,9 @@ export class SqliteHistoryStore implements HistoryStore {
     if (!row) return undefined;
 
     const messages = this.db
-      .prepare(`SELECT role, content, ts FROM messages WHERE session_code = ? ORDER BY id ASC`)
+      .prepare(
+        `SELECT id, role, content, ts FROM messages WHERE session_code = ? ORDER BY id ASC`,
+      )
       .all(sessionCode) as StoredMessage[];
 
     return { ...row, messages };
@@ -96,16 +121,61 @@ export class SqliteHistoryStore implements HistoryStore {
     return session;
   }
 
-  appendMessage(sessionCode: string, role: Role, content: string): void {
+  appendMessage(sessionCode: string, role: Role, content: string): number {
     const now = Date.now();
-    this.db.transaction(() => {
-      this.db
+    const result = this.db.transaction(() => {
+      const insert = this.db
         .prepare(`INSERT INTO messages (session_code, role, content, ts) VALUES (?, ?, ?, ?)`)
         .run(sessionCode, role, content, now);
       this.db
         .prepare(`UPDATE sessions SET updated_at = ? WHERE session_code = ?`)
         .run(now, sessionCode);
+      return insert;
     })();
+    return Number(result.lastInsertRowid);
+  }
+
+  findReplayDeltas(
+    sessionCode: string,
+    query: string,
+    provider: string,
+    model: string,
+  ): StreamChunk[] | null {
+    const pair = this.getLastMessagePair(sessionCode);
+    if (!pair) return null;
+    if (pair.user.content !== query.trim()) return null;
+
+    const cache = this.db
+      .prepare(
+        `SELECT provider, model, deltas_json
+         FROM stream_replay_cache
+         WHERE message_id = ?`,
+      )
+      .get(pair.assistant.id) as
+      | { provider: string; model: string; deltas_json: string }
+      | undefined;
+
+    if (!cache || cache.provider !== provider || cache.model !== model) return null;
+
+    try {
+      return JSON.parse(cache.deltas_json) as StreamChunk[];
+    } catch {
+      return null;
+    }
+  }
+
+  saveStreamCache(
+    messageId: number,
+    provider: string,
+    model: string,
+    deltas: StreamChunk[],
+  ): void {
+    this.db
+      .prepare(
+        `INSERT OR REPLACE INTO stream_replay_cache (message_id, provider, model, deltas_json)
+         VALUES (?, ?, ?, ?)`,
+      )
+      .run(messageId, provider, model, JSON.stringify(deltas));
   }
 
   deleteSession(sessionCode: string): void {

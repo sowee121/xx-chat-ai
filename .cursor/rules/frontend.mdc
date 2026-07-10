@@ -18,6 +18,7 @@ Vite 8 · React 19 · TypeScript 6 · shadcn/ui · Tailwind 4 · next-themes · 
 - `provider` / `model` 持久化在 Zustand；流式中禁用 Provider 切换。
 - `prefillComposer(text)` → `ChatComposer` 回填输入框（用户消息编辑）。
 - Vite 代理 `/api` → `localhost:3001`。
+- **路由**：`react-router-dom` — `/` 新对话、`/chat/:sessionCode` 已有对话；`useSyncSessionRoute` 同步 URL ↔ store。
 
 ## UI 布局（勿随意改）
 

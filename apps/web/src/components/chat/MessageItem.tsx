@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { memo, useState } from 'react'
 import { Check, Copy, Pencil } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -14,7 +14,7 @@ interface MessageItemProps {
   streaming?: boolean
 }
 
-export function MessageItem({ message, streaming = false }: MessageItemProps) {
+export const MessageItem = memo(function MessageItem({ message, streaming = false }: MessageItemProps) {
   const [copied, setCopied] = useState(false)
   const prefillComposer = useChatStore((s) => s.prefillComposer)
 
@@ -80,4 +80,4 @@ export function MessageItem({ message, streaming = false }: MessageItemProps) {
       ) : null}
     </div>
   )
-}
+})

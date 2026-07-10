@@ -1,4 +1,4 @@
-import { useState, type MouseEvent } from 'react'
+import { memo, useState, type MouseEvent } from 'react'
 import { Streamdown } from 'streamdown'
 import { code } from '@streamdown/code'
 import { cjk } from '@streamdown/cjk'
@@ -14,7 +14,10 @@ interface MarkdownMessageProps {
   animating?: boolean
 }
 
-export function MarkdownMessage({ content, animating = false }: MarkdownMessageProps) {
+export const MarkdownMessage = memo(function MarkdownMessage({
+  content,
+  animating = false,
+}: MarkdownMessageProps) {
   const [preview, setPreview] = useState<{ src: string; alt: string } | null>(null)
 
   const handleClick = (e: MouseEvent<HTMLDivElement>) => {
@@ -35,4 +38,4 @@ export function MarkdownMessage({ content, animating = false }: MarkdownMessageP
       )}
     </div>
   )
-}
+})

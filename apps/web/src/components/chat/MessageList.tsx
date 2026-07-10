@@ -1,85 +1,251 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type MutableRefObject } from 'react'
 import { ArrowDown } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import type { ChatMessage } from '@/lib/chat-types'
 import { cn } from '@/lib/utils'
-import { useChatStore } from '@/stores/chatStore'
+import { hideGlobalContentShell, runGlobalContentShell } from '@/lib/chatContentShell'
+import { useContentShellVisible } from '@/hooks/useContentShellVisible'
+import {
+  getCachedSessionMessages,
+  getSessionScrollTop,
+  setSessionScrollTop,
+  useChatStore,
+} from '@/stores/chatStore'
 import { MessageItem } from './MessageItem'
 import { styles } from './MessageList.styles'
 
 const NEAR_BOTTOM_PX = 80
+const LAYOUT_SNAP_MS = 1600
+const RESIZE_SNAP_DEBOUNCE_MS = 48
+const EMPTY_MESSAGES: ChatMessage[] = []
 
-export function MessageList() {
-  const messages = useChatStore((s) => s.messages)
-  const sessionCode = useChatStore((s) => s.sessionCode)
-  const isStreaming = useChatStore((s) => s.isStreaming)
-  const error = useChatStore((s) => s.error)
+interface MessageListProps {
+  sessionCode: string
+  active: boolean
+}
 
-  const scrollRef = useRef<HTMLDivElement>(null)
-  // 是否处于「贴底跟随」状态：用 ref 避免频繁 setState 触发重渲染
-  const followRef = useRef(true)
-  // 正在程序化平滑滚动到底：期间不因中间帧的滚动事件重新显示按钮
-  const jumpingRef = useRef(false)
-  const [showJump, setShowJump] = useState(false)
+function updateScrollUi(
+  el: HTMLDivElement,
+  followRef: MutableRefObject<boolean>,
+  setShowJump: (v: boolean) => void,
+) {
+  const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= NEAR_BOTTOM_PX
+  followRef.current = atBottom
+  setShowJump(!atBottom && el.scrollHeight > el.clientHeight + NEAR_BOTTOM_PX)
+}
 
+export function MessageList({ sessionCode, active }: MessageListProps) {
+  const frozenRef = useRef<ChatMessage[]>(
+    getCachedSessionMessages(sessionCode) ?? EMPTY_MESSAGES,
+  )
+
+  const liveMessages = useChatStore((s) =>
+    active && s.sessionCode === sessionCode ? s.messages : undefined,
+  )
+  const isStreaming = useChatStore(
+    (s) => active && s.sessionCode === sessionCode && s.isStreaming,
+  )
+  const error = useChatStore((s) =>
+    active && s.sessionCode === sessionCode ? s.error : undefined,
+  )
+
+  useEffect(() => {
+    if (active && liveMessages) frozenRef.current = liveMessages
+  }, [active, liveMessages])
+
+  const messages = active && liveMessages !== undefined ? liveMessages : frozenRef.current
   const count = messages.length
   const last = messages[count - 1]
   const lastScrollKey = `${last?.content ?? ''}|${last?.reasoning ?? ''}`
 
-  const scrollToBottom = (behavior: ScrollBehavior = 'auto') => {
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const columnRef = useRef<HTMLDivElement>(null)
+  const followRef = useRef(true)
+  const jumpingRef = useRef(false)
+  const layoutSnapUntilRef = useRef(0)
+  const isStreamingRef = useRef(isStreaming)
+  isStreamingRef.current = isStreaming
+  const activeRef = useRef(active)
+  activeRef.current = active
+  const hasBeenActiveRef = useRef(false)
+  const prevCountRef = useRef(count)
+  const [showJump, setShowJump] = useState(false)
+  const [contentMasked, setContentMasked] = useState(false)
+  const contentShellVisible = useContentShellVisible()
+  const hideScrollContent = active && (contentShellVisible || contentMasked)
+
+  const persistScrollTop = (top: number) => {
+    setSessionScrollTop(sessionCode, top)
+  }
+
+  const snapToBottom = () => {
+    const el = scrollRef.current
+    if (!el) return
+    el.scrollTop = el.scrollHeight - el.clientHeight
+    persistScrollTop(el.scrollTop)
+  }
+
+  const scheduleSnap = () => {
     requestAnimationFrame(() => {
-      const el = scrollRef.current
-      if (!el) return
-      el.scrollTo({ top: el.scrollHeight - el.clientHeight, behavior })
+      snapToBottom()
+      requestAnimationFrame(snapToBottom)
     })
   }
 
+  const beginLayoutSnap = () => {
+    layoutSnapUntilRef.current = Date.now() + LAYOUT_SNAP_MS
+    scheduleSnap()
+  }
+
+  const restoreSavedScroll = () => {
+    const el = scrollRef.current
+    if (!el || count === 0) return
+    const saved = getSessionScrollTop(sessionCode)
+    if (saved != null) el.scrollTop = saved
+    updateScrollUi(el, followRef, setShowJump)
+    persistScrollTop(el.scrollTop)
+  }
+
+  const runContentShell = (afterReady?: () => void) => {
+    if (!activeRef.current || count === 0) return
+    runGlobalContentShell(sessionCode, columnRef.current, afterReady)
+  }
+
+  useEffect(() => {
+    const column = columnRef.current
+    if (!column) return
+
+    let debounce: ReturnType<typeof setTimeout> | null = null
+    const ro = new ResizeObserver(() => {
+      if (!activeRef.current) return
+      const inSnapWindow = Date.now() < layoutSnapUntilRef.current
+      const shouldSnap =
+        followRef.current &&
+        !jumpingRef.current &&
+        (inSnapWindow || isStreamingRef.current)
+      if (!shouldSnap) return
+
+      if (debounce) clearTimeout(debounce)
+      debounce = setTimeout(() => {
+        snapToBottom()
+        debounce = null
+      }, RESIZE_SNAP_DEBOUNCE_MS)
+    })
+
+    ro.observe(column)
+    return () => {
+      ro.disconnect()
+      if (debounce) clearTimeout(debounce)
+    }
+  }, [])
+
   const handleScroll = () => {
+    if (!active) return
     const el = scrollRef.current
     if (!el) return
+    persistScrollTop(el.scrollTop)
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= NEAR_BOTTOM_PX
     followRef.current = atBottom
     if (atBottom) {
       jumpingRef.current = false
       setShowJump(false)
     } else if (!jumpingRef.current) {
-      // 平滑滚动到底的中间帧不重新显示按钮，避免点击后闪一下
       setShowJump(true)
     }
   }
 
-  // 切换会话：重置贴底/按钮状态并滚到底（消息条数可能相同，不能仅靠 count）
+  const hasContent = count > 0
+
+  // 切换会话：layout 阶段先遮内容再挂骨架，避免首帧闪一下
+  useLayoutEffect(() => {
+    if (!active) {
+      setContentMasked(false)
+      return
+    }
+    if (!hasContent) {
+      setContentMasked(false)
+      return
+    }
+
+    setContentMasked(true)
+
+    const hasSavedScroll = getSessionScrollTop(sessionCode) != null
+    if (!hasBeenActiveRef.current) hasBeenActiveRef.current = true
+
+    runContentShell(() => {
+      setContentMasked(false)
+      if (hasSavedScroll) {
+        restoreSavedScroll()
+      } else {
+        followRef.current = true
+        setShowJump(false)
+        beginLayoutSnap()
+      }
+    })
+  }, [active, sessionCode, hasContent])
+
   useEffect(() => {
-    followRef.current = true
+    if (active) return
+    hideGlobalContentShell(sessionCode)
+    const el = scrollRef.current
+    if (el) persistScrollTop(el.scrollTop)
+  }, [active, sessionCode])
+
+  // 激活时重置跳转按钮状态
+  useEffect(() => {
+    if (!active) return
     jumpingRef.current = false
-    setShowJump(false)
-    scrollToBottom()
-  }, [sessionCode])
+  }, [active, sessionCode])
 
-  // 新增消息（发送 / 新回复）：强制贴底并恢复跟随
+  // 仅消息增多时（新发消息）滚到底；流式过程不触发蒙层
   useEffect(() => {
-    followRef.current = true
-    setShowJump(false)
-    scrollToBottom()
-  }, [count])
+    if (!active) return
+    const prev = prevCountRef.current
+    prevCountRef.current = count
+    if (count > prev) {
+      followRef.current = true
+      setShowJump(false)
+      beginLayoutSnap()
+    }
+  }, [count, active])
 
-  // 流式增量：仅在贴底跟随时才自动滚动，用户上翻查看历史时不打扰
   useEffect(() => {
-    if (followRef.current) scrollToBottom()
-  }, [lastScrollKey])
+    if (!active || !followRef.current) return
+    scheduleSnap()
+  }, [lastScrollKey, active])
 
   const jumpToBottom = () => {
     followRef.current = true
     jumpingRef.current = true
     setShowJump(false)
-    scrollToBottom('smooth')
+    const el = scrollRef.current
+    if (!el) return
+    el.scrollTo({ top: el.scrollHeight - el.clientHeight, behavior: 'smooth' })
+    window.setTimeout(() => {
+      jumpingRef.current = false
+      snapToBottom()
+    }, 400)
   }
 
   return (
-    <div className={styles.wrap}>
-      <div ref={scrollRef} className={styles.scroll} onScroll={handleScroll}>
+    <div
+      className={cn(
+        styles.wrap,
+        active ? styles.wrapActive : styles.wrapInactive,
+      )}
+      aria-hidden={!active}
+    >
+      <div
+        ref={scrollRef}
+        className={cn(
+          styles.scroll,
+          hideScrollContent ? styles.scrollLoading : styles.scrollReady,
+        )}
+        onScroll={handleScroll}
+      >
         <div className={styles.gutter}>
-          <div className={styles.column}>
+          <div ref={columnRef} className={styles.column}>
             {messages.map((m, i) => (
               <MessageItem key={m.id} message={m} streaming={isStreaming && i === count - 1} />
             ))}

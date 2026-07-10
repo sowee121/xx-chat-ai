@@ -10,7 +10,7 @@
 >
 > **样式栈**：shadcn/ui + Tailwind CSS 4 + next-themes
 
-**当前状态**：MVP + Phase 2/3 核心能力均已落地，可本地 `pnpm dev` 验收。
+**当前状态**：Phase 6（加载骨架屏与会话体验优化）已落地，可 `pnpm dev` 验收。
 
 ---
 
@@ -32,6 +32,10 @@
 | 图片点击放大预览（自研 Lightbox） | Streamdown 原生图片全屏（不支持） |
 | 动态拉取供应商模型列表 | — |
 | 用户消息编辑回填输入框 | — |
+| URL 会话路由 `/` + `/chat/:sessionCode` | 会话分享鉴权、公开链接权限控制 |
+| 加载骨架屏（聊天区 + 历史列表） | — |
+| 会话 Keep-Alive + 内存消息缓存（切换免重复请求） | — |
+| 同会话同文案同模型 SSE 回放（不调大模型） | — |
 
 ---
 
@@ -58,6 +62,7 @@
 | 大模型 | `openai` SDK 流式代理 OpenAI API（兼容协议，可接 edgefn、DeepSeek 等）；配置见 `config.local.json`（gitignore） |
 | 存储 | **better-sqlite3**（`apps/server/data/chat.db`，WAL） |
 | 运行 | 本地 `pnpm dev`（:5173 + :3001） |
+| 路由（Phase 5） | **react-router-dom**；`/` 新对话、`/chat/:sessionCode` 已有对话 |
 
 ### 明确不做（视觉层）
 
@@ -100,7 +105,8 @@ pnpm add next-themes streamdown @streamdown/code @streamdown/mermaid @streamdown
 ┌─ Sidebar ────┬─ 主区域 ─────────────────────────────────────┐
 │ [新建对话]    │ [≡][✎]      XX Chat AI      [模型▾][Mock▾] [🌓] │
 │ 历史对话列表  ├──────────────────────────────────────────────┤
-│ (hover 删除 / 批量管理)  │                                              │
+│ (hover 删除 / 批量管理)  │   切换/刷新：全局骨架蒙层 → 内容淡入          │
+│ 列表加载：10 条 h-10 骨架 │   Keep-Alive 多会话面板（隐藏不卸载）        │
 │              │   空状态：居中「嘻嘻，想问点什么？」+ 快捷标签       │
 │              │   有对话：用户右对齐气泡 / AI 全宽 Streamdown    │
 │              │          推理中：ReasoningBlock + 等待卡片(三点) │
@@ -114,13 +120,15 @@ pnpm add next-themes streamdown @streamdown/code @streamdown/mermaid @streamdown
 
 | 区域 | 实现 |
 | --- | --- |
-| 侧栏 | `AppSidebar` + shadcn `Sidebar`（offcanvas）；「新建对话」居中；历史对话列表；批量选择与删除；`TooltipProvider` 包裹（必须，否则白屏） |
+| 侧栏 | `AppSidebar` + shadcn `Sidebar`（offcanvas）；「新建对话」居中；历史对话列表（`sessionsLoading` + `useDeferredSkeleton` 延时淡出）；标题行固定 `h-10` + 批量按钮占位槽；批量选择与删除；`TooltipProvider` 包裹（必须，否则白屏） |
 | 顶栏 | `ChatHeader`：左 `SidebarTrigger` + 新建对话；中品牌标题；右 `ModelMenu` + `ProviderMenu` + `ModeToggle` |
 | 空状态 | `HomeView`：居中标题 + `ChatComposer` + 快捷标签 |
-| 用户消息 | 右对齐 `bg-muted` 圆角气泡；hover 显示编辑（回填输入框）+ 复制 |
-| AI 消息 | 全宽 `MarkdownMessage`；可选 `ReasoningBlock`（顶栏文案 + 左侧竖线正文） |
+| 用户消息 | 右对齐 `bg-muted` 圆角气泡（`h-12` 单行等价高度）；hover 显示编辑（回填输入框）+ 复制 |
+| AI 消息 | 全宽 `MarkdownMessage`（`leading-7`）；可选 `ReasoningBlock`（顶栏文案 + 左侧竖线正文） |
 | 等待回复 | 与用户气泡同高的 `bg-muted` 卡片，内三点交替动画（无文案） |
-| 输入区 | `ChatComposer` 悬浮底部；支持 `prefillComposer` 回填编辑 |
+| 加载骨架 | 聊天区 `MessageContentShell`（全局唯一蒙层，无底色，仅 `bg-muted` 脉冲条）；历史列表 `SessionListSkeleton`（10 条 `h-10`）；时序见 `lib/shellTiming.ts` |
+| 会话切换 | `mountedSessionCodes` Keep-Alive（LRU 上限 10）；`sessionMessagesCache` 命中则跳过 `GET /history/:code`；滚动位置 `sessionScrollTops` 缓存 |
+| 输入区 | `ChatComposer` 悬浮底部（`pt-2 pb-6`，与消息列 `py-6` 对齐）；支持 `prefillComposer` 回填编辑 |
 | Provider | `ProviderMenu`（`outline` 胶囊）；流式中禁用 |
 | 模型 | `ModelMenu`（仅 openai）；可搜索过滤 |
 | 智能滚动 | 贴底跟随；离开底部显示「回到底部」 |
@@ -189,10 +197,12 @@ xx-chat-ai/
 │   │       │   ├── mode-toggle.tsx + .styles.ts
 │   │       │   └── chat/
 │   │       │       ├── AppSidebar.tsx + .styles.ts
+│   │       │       ├── SessionListSkeleton.tsx
 │   │       │       ├── ChatHeader.tsx + .styles.ts
 │   │       │       ├── ChatComposer.tsx + .styles.ts
 │   │       │       ├── HomeView.tsx + .styles.ts
 │   │       │       ├── MessageList.tsx + .styles.ts
+│   │       │       ├── MessageContentShell.tsx + .styles.ts
 │   │       │       ├── MessageItem.tsx + .styles.ts
 │   │       │       ├── ReasoningBlock.tsx + .styles.ts
 │   │       │       ├── MarkdownMessage.tsx + .styles.ts
@@ -201,7 +211,17 @@ xx-chat-ai/
 │   │       │       └── ModelMenu.tsx + .styles.ts
 │   │       ├── lib/
 │   │       │   ├── chat-types.ts
+│   │       │   ├── chat-routes.ts
+│   │       │   ├── chatContentShell.ts   # 全局聊天骨架蒙层
+│   │       │   ├── shellTiming.ts        # 骨架最短展示/延时/淡出常量
+│   │       │   ├── waitForColumnReady.ts # 图片/Mermaid 布局稳定检测
 │   │       │   ├── mermaidPlugin.ts | sanitizeMermaid.ts | mathPlugin.ts
+│   │       ├── hooks/
+│   │       │   ├── useSyncSessionRoute.ts
+│   │       │   ├── useSessionNavigation.ts
+│   │       │   ├── useContentShellVisible.ts
+│   │       │   └── useDeferredSkeleton.ts
+│   │       ├── routes/ChatLayout.tsx
 │   │       ├── stores/chatStore.ts
 │   │       ├── services/sseClient.ts | historyApi.ts | providerApi.ts
 │   └── server/
@@ -213,7 +233,9 @@ xx-chat-ai/
 │           ├── config/local.ts
 │           ├── lib/
 │           │   ├── thinkingParser.ts   # 流式思考标签 → reasoning/text
-│           │   └── reasoningDelta.ts   # delta 多字段推理归一化
+│           │   ├── reasoningDelta.ts   # delta 多字段推理归一化
+│           │   ├── streamReplay.ts     # SSE delta 聚合与分片回放
+│           │   └── resolveModel.ts
 │           ├── providers/
 │           │   ├── mock.ts             # 关键词意图 mock
 │           │   ├── openai.ts           # SDK 流式 + models.list
@@ -249,6 +271,8 @@ xx-chat-ai/
 ```
 
 事件：`meta` → `delta`* → `done` | `error`；客户端 AbortController 停止时服务端持久化**已生成的正文**（不含推理块）。
+
+**重复提问回放**（2026-07）：同 `sessionCode` + 相同 `query` + 相同 `provider`/`model` 命中缓存时，服务端回放已存 delta 序列（`pacedReplayStream`），不调用 LLM；流结束后写入/更新 `stream_replay_cache`。
 
 **delta 载荷**（2026-07 扩展）：
 
@@ -366,6 +390,201 @@ cp apps/server/config.local.example.json apps/server/config.local.json
 - [x] 用户消息编辑回填；等待回复三点动画卡片
 - [x] 界面文案：统一「对话」；「新建对话」
 
+### Phase 5 — URL 会话路由（最小方案）✅
+
+> **动机**：主流产品在首条消息后把 `sessionCode` 写入地址栏，刷新 / 书签可恢复对应对话。
+
+#### 5.1 目标（最小范围）
+
+| 做 | 不做（后续可选） |
+| --- | --- |
+| 首条消息拿到 `meta.sessionCode` 后更新 URL | 会话分享、权限、公开链接 |
+| 访问 `/chat/:sessionCode` 自动 `openSession` | 后端改 API 契约 |
+| 「新建对话」回到 `/` | URL 编码标题 slug（`/chat/uuid/标题`） |
+| 侧栏点历史项导航到 `/chat/:code` | 浏览器前进后退栈精细优化（先保证 replace 首跳） |
+| 无效 `sessionCode` 提示并回 `/` | 生产静态托管配置文档化（见 5.6） |
+
+#### 5.2 路由表
+
+| 路径 | 含义 | 行为 |
+| --- | --- | --- |
+| `/` | 新对话 | `newChat()`（若当前有流式则先 abort）；空状态 `HomeView` |
+| `/chat/:sessionCode` | 已有对话 | 挂载时 `openSession(sessionCode)`；有消息则 `MessageList` |
+
+路径前缀用 `/chat/`（conversation），避免与未来 `/settings` 等冲突。
+
+#### 5.3 依赖
+
+```bash
+cd apps/web
+pnpm add react-router-dom
+```
+
+#### 5.4 数据流（URL ↔ Store 单一方向原则）
+
+```mermaid
+sequenceDiagram
+    participant URL as Browser_URL
+    participant Router as React_Router
+    participant Store as chatStore
+    participant API as Backend
+
+    Note over URL,API: 冷启动 / 刷新
+    URL->>Router: GET /chat/{code}
+    Router->>Store: openSession(code)
+    Store->>API: GET /api/history/{code}
+    API-->>Store: messages
+
+    Note over URL,API: 首条发送
+    Store->>API: POST /api/chat (SSE meta)
+    API-->>Store: meta.sessionCode
+    Store->>Router: navigate(/chat/{code}, replace)
+
+    Note over URL,API: 新建对话
+    Router->>URL: navigate(/)
+    Store->>Store: newChat()
+```
+
+**同步规则**（实现时遵守，避免死循环）：
+
+1. **URL → Store**：仅路由 `sessionCode` 参数变化时触发 `openSession`（`useEffect` + 比较 prev code）。
+2. **Store → URL**：仅在「从无到有 sessionCode」时 `navigate`（`onMeta` / 首条消息），用 **`replace: true`**，避免历史栈多一层空 `/`。
+3. **侧栏点击**：`navigate(/chat/${code})`，由规则 1 加载会话；若已在同 code 且 messages 非空则 `openSession` 早返回（保持现有逻辑）。
+4. **新建对话**：先 `newChat()` 再 `navigate('/')`，或 `navigate` 后由 `/` 路由 mount 调 `newChat()`（二选一，避免双清）。
+5. **流式中**：禁止因 URL 变化触发 `openSession` 覆盖当前流；`isStreaming` 时路由守卫或忽略 param 变更。
+
+#### 5.5 文件改动清单
+
+| 文件 | 改动 |
+| --- | --- |
+| `apps/web/package.json` | 增加 `react-router-dom` |
+| `apps/web/src/main.tsx` | 包一层 `<BrowserRouter>` |
+| `apps/web/src/App.tsx` | 改为 `<Routes>` / `<Route>`，或拆 `ChatPage` + `ChatRoute` |
+| `apps/web/src/routes/ChatRoute.tsx`（新建） | 读 `useParams().sessionCode`；无参=新对话；有参=bootstrap `openSession` |
+| `apps/web/src/stores/chatStore.ts` | `onMeta` 后不再单独依赖侧栏；导出 `sessionCode` 与 navigate 解耦（navigate 放组件层或 tiny `useSessionNavigation` hook） |
+| `apps/web/src/components/chat/AppSidebar.tsx` | `handleOpen` → `navigate(/chat/...)`；`handleNew` → `navigate('/')` |
+| `apps/web/src/components/chat/ChatHeader.tsx` | 新建按钮同 `navigate('/')` |
+| `apps/web/vite.config.ts` | 开发无需改；生产部署需 SPA fallback（见 5.6） |
+
+**推荐结构**（最小侵入）：
+
+```
+apps/web/src/
+├── main.tsx              # BrowserRouter
+├── App.tsx               # Routes 壳
+├── routes/
+│   └── ChatRoute.tsx     # / 与 /chat/:sessionCode 共用 Chat 布局
+└── hooks/
+    └── useSyncSessionRoute.ts   # URL param ↔ openSession / navigate
+```
+
+#### 5.6 生产构建注意
+
+`pnpm build` 后若由 Fastify / Nginx 托管 `apps/web/dist`，需对非 `/api/*` 路径 **fallback 到 `index.html`**，否则刷新 `/chat/uuid` 会 404。MVP 可先只保证 `pnpm dev` + Vite 开发代理；上线前在部署章节补一句即可。
+
+#### 5.7 边界与错误
+
+| 场景 | 处理 |
+| --- | --- |
+| `/chat/不存在` | `fetchSession` 404 → toast/inline 错误 + `navigate('/')` |
+| 流式生成中用户改 URL | 忽略或 abort 后跳转（建议：**abort + 跟新 URL**） |
+| 删除当前对话 | 已有 `newChat()` → 补 `navigate('/')` |
+| 直接访问 `/` 再发送 | 与现网一致；`meta` 后 replace 到 `/chat/{code}` |
+
+#### 5.8 验收清单
+
+- [x] 新对话发送第一条后，地址栏变为 `/chat/{sessionCode}`（`replace`）
+- [x] 刷新 `/chat/{sessionCode}` 后 `openSession` 拉取历史
+- [x] 侧栏切换对话，URL 同步 `/chat/:code`
+- [x] 「新建对话」→ `goHome()` 回 `/`
+- [x] 无效 sessionCode → 错误提示 + 回 `/`
+- [x] 流式中改 URL → abort 后加载新会话
+- [x] `pnpm exec tsc --noEmit`（web）通过
+
+**实现文件**：`hooks/useSyncSessionRoute.ts`、`hooks/useSessionNavigation.ts`、`routes/ChatLayout.tsx`；`main.tsx` 包 `BrowserRouter`。
+
+---
+
+### Phase 6 — 加载骨架屏与会话体验优化 ✅
+
+> **动机**：切换/刷新时避免内容闪动；侧栏与聊天区加载风格统一；已访问会话切换回退时不重复拉详情。
+
+#### 6.1 聊天区骨架蒙层
+
+| 项 | 实现 |
+| --- | --- |
+| 组件 | `MessageContentShell`（`ChatLayout` 内全局唯一实例） |
+| 触发 | `MessageList` 激活且有消息时，`useLayoutEffect` 调 `runGlobalContentShell` |
+| 遮罩 | 蒙层无 `bg-background`，仅 `bg-muted` 脉冲条；消息列表 `opacity-0` 直至淡出完成 |
+| 尺寸 | 用户气泡 `h-12`（对齐 `userBubble` 单行）；助手行 `h-7`（对齐 `leading-7`） |
+| 稳定检测 | `waitForColumnReady`：ResizeObserver + 图片 `load`/`error`，最长 5s 超时 |
+| 时序 | `shellTiming.ts`：最短展示 380ms → 额外停留 220ms → 淡出 400ms → 内容交叉淡入 |
+| 防闪 | `contentMasked` 本地状态 + `useLayoutEffect` 先于绘制；`ownerSessionCode` 避免 A→B 切换误关蒙层 |
+
+**关键文件**：`lib/chatContentShell.ts`、`lib/waitForColumnReady.ts`、`hooks/useContentShellVisible.ts`
+
+#### 6.2 历史对话列表骨架
+
+| 项 | 实现 |
+| --- | --- |
+| 组件 | `SessionListSkeleton`（10 条 `h-10 rounded-xl`） |
+| 状态 | `chatStore.sessionsLoading` + `useDeferredSkeleton` 延时淡出 |
+| 布局 | `listArea` 始终 `flex-1` 撑满；骨架 `absolute inset-0` 叠在列表上 |
+| 标题行 | `groupHeader` 固定 `h-10`；`batchToggleSlot` 预留批量按钮位，避免刷新抖动 |
+| 交叉淡入 | 列表 `listFade` 与骨架同步 400ms 过渡 |
+
+**静默刷新**：已有 `sessions` 数据时 `loadSessions` 不显示骨架（仅首屏 `sessions.length === 0` 时 loading）。
+
+#### 6.3 会话 Keep-Alive 与内存缓存
+
+```mermaid
+flowchart LR
+  A[切换离开] --> B[syncSessionCache]
+  B --> C[mountedSessionCodes LRU]
+  C --> D[MessageList hidden]
+  D --> E[再切回]
+  E --> F{sessionMessagesCache?}
+  F -->|有| G[恢复 store 跳过 GET]
+  F -->|无| H[fetchSessionDeduped]
+  C -->|超 10 个| I[dropSessionCache 淘汰]
+```
+
+| 机制 | 说明 |
+| --- | --- |
+| `sessionMessagesCache` | 切走时快照消息；`openSession` 命中则直接恢复，**不请求**详情 API |
+| `mountedSessionCodes` | 最多 10 个 `MessageList` 面板 keep-alive（`invisible` 隐藏不卸载） |
+| `sessionScrollTops` | 各会话滚动位置缓存，切回恢复 |
+| `_routeLoadSeq` | 路由竞态序号，丢弃过期 `openSession` 结果 |
+| `fetchSessionDeduped` | Strict Mode 双 effect 请求去重 |
+| 稳定 message id | 服务端 `id` → `msg-{id}`，避免图片/Markdown 重挂载闪动 |
+
+**仍请求详情**：冷启动/刷新（内存清空）、首次打开某对话、LRU 淘汰后重进。
+
+#### 6.4 同文案 SSE 回放（服务端）
+
+同一会话、相同用户文案、相同 `provider` + `model` 命中 `stream_replay_cache` 时，不调大模型，由 `pacedReplayStream` 分片延时回放历史 delta。
+
+**涉及**：`apps/server/src/routes/chat.ts`、`lib/streamReplay.ts`、`store` 回放缓存表。
+
+#### 6.5 布局间距约定
+
+| 区域 | 垂直内边距 |
+| --- | --- |
+| 消息列 `MessageList` column | `py-6` |
+| 骨架内层 `shellInner` | `py-6` |
+| 输入区 `composerOverlay` | `pt-2 pb-6` |
+
+水平均为 `px-4 sm:px-6`，内容宽 `max-w-3xl`；输入区高度写入 CSS 变量 `--chat-composer-pad`。
+
+#### 6.6 验收清单
+
+- [x] 刷新/切换会话：骨架先于内容展示，无首帧闪动
+- [x] 骨架淡出与内容淡入约 400ms，最短展示 + 延时可感知
+- [x] 历史列表首屏骨架 10 条，标题行不抖动
+- [x] 切回已缓存会话不发起 `GET /api/history/:code`
+- [x] Keep-Alive 切换后图片/Markdown 不重载闪动
+- [x] 同文案重复提问走 SSE 回放（服务端）
+
 ---
 
 ## 9. 本地启动
@@ -403,6 +622,10 @@ pnpm build   # web + server
 | 空 assistant 污染多轮上下文 | `chatStore` 过滤无正文 assistant（BUG-02） |
 | 流式报错丢失 partial | `catch` 路径 `persistAssistantIfAny`（BUG-03） |
 | abort 后 provider 多余 flush | `signal.aborted` 时跳过 `parser.flush()`（BUG-07） |
+| 切换会话消息区闪动 | Keep-Alive + `sessionMessagesCache` + 稳定 `msg-{id}` |
+| 切换会话重复拉详情 | 缓存命中时 `openSession` 早返回，跳过 GET |
+| 骨架屏一闪而过 | `shellTiming` 最短展示 + 延时 + 400ms 淡出 |
+| 侧栏标题行刷新抖动 | `groupHeader` 固定 `h-10` + `batchToggleSlot` 占位 |
 
 **待修复 Bug 排期**：见 [`docs/bugs-plan.md`](./bugs-plan.md)（BUG-01～03、07 已修复，其余待排期）。
 

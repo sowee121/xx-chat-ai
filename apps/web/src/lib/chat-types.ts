@@ -43,6 +43,7 @@ export interface SessionSummary {
 }
 
 export interface StoredMessage {
+  id?: number
   role: Role
   content: string
   ts: number

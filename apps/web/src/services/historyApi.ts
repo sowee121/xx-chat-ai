@@ -9,6 +9,7 @@ export async function fetchSessions(): Promise<SessionSummary[]> {
 
 export async function fetchSession(sessionCode: string): Promise<SessionDetail> {
   const res = await fetch(`/api/history/${sessionCode}`)
+  if (res.status === 404) throw new Error('对话不存在或已删除')
   if (!res.ok) throw new Error('加载对话失败')
   return (await res.json()) as SessionDetail
 }

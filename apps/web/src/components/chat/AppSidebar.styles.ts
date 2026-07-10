@@ -5,8 +5,9 @@ export const styles = {
   newBtnIcon: 'size-[1.125rem] shrink-0',
   content: 'min-h-0 flex-1 overflow-hidden pt-1 pb-1',
   group: 'flex min-h-0 flex-1 flex-col gap-1 p-0',
-  groupHeader: 'flex shrink-0 items-center justify-between gap-2 px-4 py-2',
+  groupHeader: 'flex h-10 shrink-0 items-center justify-between gap-2 px-4',
   groupLabel: 'pl-3 text-sm font-medium tracking-wide text-sidebar-foreground/70',
+  batchToggleSlot: 'flex size-8 shrink-0 items-center justify-center',
   batchToggle: 'text-muted-foreground shrink-0',
   batchToggleIcon: 'size-4',
   batchCount: 'text-sm font-medium tracking-wide text-sidebar-foreground/70',
@@ -14,8 +15,6 @@ export const styles = {
   batchActions: 'flex shrink-0 items-center gap-0.5',
   batchActionBtn: 'h-7 !rounded-full px-3 text-xs',
   menu: 'gap-1.5 px-4',
-  sessionScroll:
-    'min-h-0 flex-1 overflow-y-scroll [scrollbar-color:color-mix(in_oklch,var(--sidebar-foreground)_25%,transparent)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-sidebar-foreground/25 [&::-webkit-scrollbar-track]:bg-transparent',
   sessionRow:
     'group/session flex h-10 w-full cursor-pointer items-center gap-1 rounded-xl pl-3 pr-1.5 text-sm transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:outline-none',
   sessionRowBatch: 'gap-2',
@@ -31,6 +30,15 @@ export const styles = {
     'text-destructive flex size-8 shrink-0 items-center justify-center rounded-full opacity-0 transition-[opacity,background-color,color] group-hover/session:opacity-100 hover:bg-destructive/10 hover:text-destructive focus-visible:opacity-100',
   deleteIcon: 'size-4',
   empty: 'text-muted-foreground py-4 pl-7 pr-4 text-sm',
+  listArea:
+    'relative flex min-h-0 flex-1 flex-col overflow-y-scroll [scrollbar-color:color-mix(in_oklch,var(--sidebar-foreground)_25%,transparent)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-sidebar-foreground/25 [&::-webkit-scrollbar-track]:bg-transparent',
+  listFade: 'transition-opacity duration-[400ms] ease-in-out motion-reduce:transition-none',
+  listHidden: 'opacity-0',
+  listReady: 'opacity-100',
+  skeletonLayer:
+    'absolute inset-0 z-10 flex min-h-0 flex-col overflow-hidden transition-opacity duration-[400ms] ease-in-out motion-reduce:transition-none',
+  skeletonLayerVisible: 'opacity-100',
+  skeletonLayerHidden: 'pointer-events-none opacity-0',
   deleteDialogContent: 'sm:max-w-[22rem]',
   deleteDialogBody: 'flex flex-col items-center gap-2 text-center',
   deleteDialogMedia:

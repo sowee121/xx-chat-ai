@@ -2,6 +2,7 @@ import { createMermaidPlugin, type DiagramPlugin } from '@streamdown/mermaid'
 
 import {
   convertInvalidBarChart,
+  fixXychartBetaSyntax,
   normalizeMermaidSource,
   sanitizeMermaidBlock,
   sanitizeMermaidBlockAggressive,
@@ -22,9 +23,11 @@ export const mermaid: DiagramPlugin = {
       async render(id, source) {
         const normalized = normalizeMermaidSource(source)
         const barChart = convertInvalidBarChart(normalized)
+        const xychartFixed = fixXychartBetaSyntax(normalized)
         const attempts = [
           normalized,
-          ...(barChart ? [barChart] : []),
+          xychartFixed,
+          ...(barChart ? [barChart, fixXychartBetaSyntax(barChart)] : []),
           sanitizeMermaidBlock(normalized),
           sanitizeMermaidBlockAggressive(normalized),
         ]

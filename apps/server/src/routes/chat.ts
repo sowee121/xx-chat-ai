@@ -1,9 +1,11 @@
 import type { FastifyInstance } from 'fastify';
+import { resolveRequestModel } from '../lib/resolveModel.js';
+import { aggregateStreamChunks, pacedReplayStream } from '../lib/streamReplay.js';
 import { stripThinkingTags } from '../lib/thinkingParser.js';
 import { getDefaultProvider } from '../providers/config.js';
 import { getProvider } from '../providers/index.js';
 import { historyStore } from '../store/sqlite.js';
-import type { ChatRequestBody } from '../types.js';
+import type { ChatRequestBody, StreamChunk } from '../types.js';
 
 const bodySchema = {
   type: 'object',
@@ -41,9 +43,21 @@ function persistAssistantIfAny(
   sessionCode: string,
   fullText: string,
   hadReasoning: boolean,
-): void {
+): number | null {
   const contentToSave = resolveAssistantContent(stripThinkingTags(fullText), hadReasoning);
-  if (contentToSave) historyStore.appendMessage(sessionCode, 'assistant', contentToSave);
+  if (!contentToSave) return null;
+  return historyStore.appendMessage(sessionCode, 'assistant', contentToSave);
+}
+
+function saveReplayCacheIfComplete(
+  messageId: number | null,
+  provider: string,
+  model: string,
+  deltas: StreamChunk[],
+  completed: boolean,
+): void {
+  if (!completed || messageId == null || deltas.length === 0) return;
+  historyStore.saveStreamCache(messageId, provider, model, deltas);
 }
 
 export async function chatRoutes(app: FastifyInstance): Promise<void> {
@@ -53,15 +67,22 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
     async (request, reply) => {
       const body = request.body;
       const provider = body.provider ?? getDefaultProvider();
+      const model = resolveRequestModel(provider, body.model);
 
       const session = historyStore.ensureSession(body.sessionCode, body.query);
+      const replayDeltas = historyStore.findReplayDeltas(
+        session.sessionCode,
+        body.query,
+        provider,
+        model,
+      );
+
       historyStore.appendMessage(session.sessionCode, 'user', body.query);
 
       const ac = new AbortController();
 
       reply.hijack();
       const raw = reply.raw;
-      // 客户端断开（如前端 AbortController 停止）时，响应 socket 关闭且未正常结束 → 中止生成
       raw.on('close', () => {
         if (!raw.writableFinished) ac.abort();
       });
@@ -79,33 +100,52 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
 
       send('meta', { sessionCode: session.sessionCode, title: session.title });
 
-      let fullText = '';
-      let hadReasoning = false;
-      try {
-        const stream = getProvider(provider)({
-          query: body.query,
-          messages: body.messages ?? [],
-          signal: ac.signal,
-          model: body.model,
-        });
+      const streamedDeltas: StreamChunk[] = [];
 
-        for await (const delta of stream) {
-          if (ac.signal.aborted) break;
-          if (delta.type === 'reasoning') hadReasoning = true;
-          if (delta.type === 'text') fullText += delta.content;
-          send('delta', delta);
+      try {
+        if (replayDeltas) {
+          for await (const delta of pacedReplayStream(replayDeltas, ac.signal)) {
+            if (ac.signal.aborted) break;
+            streamedDeltas.push(delta);
+            send('delta', delta);
+          }
+        } else {
+          const stream = getProvider(provider)({
+            query: body.query,
+            messages: body.messages ?? [],
+            signal: ac.signal,
+            model: body.model,
+          });
+
+          for await (const delta of stream) {
+            if (ac.signal.aborted) break;
+            streamedDeltas.push(delta);
+            send('delta', delta);
+          }
         }
 
-        if (ac.signal.aborted) {
-          // 客户端主动停止：连接已断，仅持久化已生成内容
-          persistAssistantIfAny(session.sessionCode, fullText, hadReasoning);
-        } else {
-          persistAssistantIfAny(session.sessionCode, fullText, hadReasoning);
-          send('done', { sessionCode: session.sessionCode, finishReason: 'stop' });
+        const { fullText, hadReasoning } = aggregateStreamChunks(streamedDeltas);
+        const completed = !ac.signal.aborted;
+
+        const assistantId = persistAssistantIfAny(session.sessionCode, fullText, hadReasoning);
+        saveReplayCacheIfComplete(
+          assistantId,
+          provider,
+          model,
+          replayDeltas ?? streamedDeltas,
+          completed,
+        );
+
+        if (completed) {
+          send('done', {
+            sessionCode: session.sessionCode,
+            finishReason: 'stop',
+            replayed: Boolean(replayDeltas),
+          });
         }
       } catch (err) {
         request.log.error(err);
-        // 流式中途报错：仍持久化已生成的 partial（BUG-03）
+        const { fullText, hadReasoning } = aggregateStreamChunks(streamedDeltas);
         persistAssistantIfAny(session.sessionCode, fullText, hadReasoning);
         send('error', { message: err instanceof Error ? err.message : 'stream error' });
       } finally {

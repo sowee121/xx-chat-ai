@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useParams } from 'react-router-dom'
 import { Check, Minus, MoreHorizontal, SquarePen, Trash2 } from 'lucide-react'
 
 import {
@@ -21,18 +22,26 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar'
 import { cn } from '@/lib/utils'
+import { useDeferredSkeleton } from '@/hooks/useDeferredSkeleton'
+import { useSessionNavigation } from '@/hooks/useSessionNavigation'
 import { useChatStore } from '@/stores/chatStore'
+import { SessionListSkeleton } from './SessionListSkeleton'
 import { styles } from './AppSidebar.styles'
 
 export function AppSidebar() {
+  const { sessionCode: routeCode } = useParams()
   const sessions = useChatStore((s) => s.sessions)
+  const sessionsLoading = useChatStore((s) => s.sessionsLoading)
+  const { skeletonMounted, skeletonVisible } = useDeferredSkeleton(sessionsLoading)
+  const hideSessionList = sessionsLoading || skeletonVisible
   const sessionCode = useChatStore((s) => s.sessionCode)
   const loadSessions = useChatStore((s) => s.loadSessions)
-  const openSession = useChatStore((s) => s.openSession)
   const removeSession = useChatStore((s) => s.removeSession)
   const removeSessions = useChatStore((s) => s.removeSessions)
-  const newChat = useChatStore((s) => s.newChat)
+  const { goHome, goSession } = useSessionNavigation()
   const { isMobile, setOpenMobile } = useSidebar()
+
+  const activeSessionCode = routeCode ?? sessionCode
 
   const [batchMode, setBatchMode] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(() => new Set())
@@ -82,12 +91,12 @@ export function AppSidebar() {
   }
 
   const handleOpen = (code: string) => {
-    void openSession(code)
+    goSession(code)
     closeOnMobile()
   }
 
   const handleNew = () => {
-    newChat()
+    goHome()
     closeOnMobile()
   }
 
@@ -103,10 +112,20 @@ export function AppSidebar() {
 
   const handleConfirmDelete = () => {
     if (!deleteTarget) return
+    const wasCurrent =
+      deleteTarget.kind === 'single'
+        ? deleteTarget.sessionCode === activeSessionCode
+        : Boolean(activeSessionCode && deleteTarget.codes.includes(activeSessionCode))
+
     if (deleteTarget.kind === 'single') {
-      void removeSession(deleteTarget.sessionCode)
+      void removeSession(deleteTarget.sessionCode).then(() => {
+        if (wasCurrent) goHome()
+      })
     } else {
-      void removeSessions(deleteTarget.codes).then(() => exitBatchMode())
+      void removeSessions(deleteTarget.codes).then(() => {
+        if (wasCurrent) goHome()
+        exitBatchMode()
+      })
     }
     setDeleteTarget(null)
   }
@@ -184,30 +203,40 @@ export function AppSidebar() {
             ) : (
               <>
                 <span className={styles.groupLabel}>历史对话</span>
-                {sessions.length > 0 ? (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    className={styles.batchToggle}
-                    aria-label="批量管理"
-                    title="批量管理"
-                    onClick={enterBatchMode}
-                  >
-                    <MoreHorizontal className={styles.batchToggleIcon} />
-                  </Button>
-                ) : null}
+                <div className={styles.batchToggleSlot}>
+                  {sessions.length > 0 ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      className={styles.batchToggle}
+                      aria-label="批量管理"
+                      title="批量管理"
+                      onClick={enterBatchMode}
+                    >
+                      <MoreHorizontal className={styles.batchToggleIcon} />
+                    </Button>
+                  ) : null}
+                </div>
               </>
             )}
           </div>
 
-          {sessions.length === 0 ? (
-            <p className={styles.empty}>还没有对话～</p>
-          ) : (
-            <div className={styles.sessionScroll}>
-              <SidebarMenu className={styles.menu}>
-                {sessions.map((s) => {
-                  const isActive = !batchMode && s.sessionCode === sessionCode
+          <div className={styles.listArea}>
+            {skeletonMounted ? <SessionListSkeleton visible={skeletonVisible} /> : null}
+
+            {!sessionsLoading && sessions.length === 0 && !skeletonMounted ? (
+              <p className={styles.empty}>还没有对话～</p>
+            ) : sessions.length > 0 ? (
+              <div
+                className={cn(
+                  styles.listFade,
+                  hideSessionList ? styles.listHidden : styles.listReady,
+                )}
+              >
+                <SidebarMenu className={styles.menu}>
+                  {sessions.map((s) => {
+                  const isActive = !batchMode && s.sessionCode === activeSessionCode
                   const isSelected = selected.has(s.sessionCode)
                   return (
                     <SidebarMenuItem key={s.sessionCode}>
@@ -263,7 +292,8 @@ export function AppSidebar() {
                 })}
               </SidebarMenu>
             </div>
-          )}
+            ) : null}
+          </div>
         </SidebarGroup>
       </SidebarContent>
       <AlertDialog

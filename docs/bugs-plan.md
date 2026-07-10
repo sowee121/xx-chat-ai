@@ -255,7 +255,7 @@ sessionCode: sessionCode ?? randomUUID(),
 | 项 | 说明 |
 | --- | --- |
 | 用户消息「编辑」不截断后续轮次 | 产品设计：仅 `prefillComposer` 回填，非缺陷 |
-| 流式中切换会话丢失未落库 partial | 预期：切换时 abort，以 DB 为准 |
+| 流式中切换会话 | 切换时 abort；已访问会话靠内存缓存恢复，未落库 partial 以 DB 为准 |
 | 无单元测试 | 技术债；修复 BUG-01/05 时建议补 `thinkingParser` 最小用例 |
 | TypeScript | `apps/web`、`apps/server` 分别 `tsc --noEmit` 已通过（审查时） |
 
@@ -307,4 +307,4 @@ sessionCode: sessionCode ?? randomUUID(),
 
 ---
 
-*最后更新：2026-07-09（审查结论录入，待开发排期）*
+*最后更新：2026-07-10（同步 Phase 6 会话缓存与骨架屏行为）*
