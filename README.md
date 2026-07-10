@@ -83,9 +83,9 @@ cp apps/server/config.local.example.json apps/server/config.local.json
 | `OPENAI_BASE_URL` | API 端点（OpenAI 兼容） |
 | `OPENAI_MODEL` | 默认模型 |
 | `OPENAI_SYSTEM_PROMPT` | 可选系统提示 |
-| `DEFAULT_PROVIDER` | `mock` \| `openai` |
-| `PORT` | 后端端口，默认 3001 |
-| `DB_PATH` | SQLite 路径（可选） |
+| `XX_DEFAULT_PROVIDER` | `mock` \| `openai` |
+| `XX_PORT` | 后端端口，默认 3001 |
+| `XX_DB_PATH` | SQLite 路径（可选） |
 
 > `config.local.json` 已加入 `.gitignore`，请勿将真实 Key 提交到仓库。
 

@@ -325,9 +325,9 @@ cp apps/server/config.local.example.json apps/server/config.local.json
 | `OPENAI_BASE_URL` | API 端点（OpenAI 兼容，如 edgefn、DeepSeek、OpenAI 官方） |
 | `OPENAI_MODEL` | 默认模型（可被前端下拉覆盖） |
 | `OPENAI_SYSTEM_PROMPT` | 可选系统提示 |
-| `DEFAULT_PROVIDER` | `mock` \| `openai` |
-| `PORT` | 默认 3001 |
-| `DB_PATH` | 可选 SQLite 路径 |
+| `XX_DEFAULT_PROVIDER` | `mock` \| `openai` |
+| `XX_PORT` | 默认 3001 |
+| `XX_DB_PATH` | 可选 SQLite 路径 |
 
 ---
 
@@ -399,8 +399,12 @@ pnpm build   # web + server
 | 回到底部按钮闪烁 | `jumpingRef` 防止平滑滚动中间帧重新显示 |
 | Mermaid `barChart` 报错 | `convertInvalidBarChart` → `xychart-beta` |
 | edgefn R1 无 `reasoning_content` | `content` 内 `redacted_thinking` 标签流式解析 |
+| 仅有推理无正文时不落库 | 落库占位符 `（本轮无正文输出）`（`bugs-plan` BUG-01） |
+| 空 assistant 污染多轮上下文 | `chatStore` 过滤无正文 assistant（BUG-02） |
+| 流式报错丢失 partial | `catch` 路径 `persistAssistantIfAny`（BUG-03） |
+| abort 后 provider 多余 flush | `signal.aborted` 时跳过 `parser.flush()`（BUG-07） |
 
-**待修复 Bug 排期**：见 [`docs/bugs-plan.md`](./bugs-plan.md)（2026-07 代码审查录入，尚未改代码）。
+**待修复 Bug 排期**：见 [`docs/bugs-plan.md`](./bugs-plan.md)（BUG-01～03、07 已修复，其余待排期）。
 
 ---
 

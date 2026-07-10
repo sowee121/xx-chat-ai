@@ -182,7 +182,9 @@ export const useChatStore = create<ChatState>()(
         const state = get()
         if (!trimmed || state.isStreaming) return
 
-        const history = state.messages.map((m) => ({ role: m.role, content: m.content }))
+        const history = state.messages
+          .filter((m) => m.role !== 'assistant' || m.content.trim().length > 0)
+          .map((m) => ({ role: m.role, content: m.content }))
         const userMsg: ChatMessage = { id: uid(), role: 'user', content: trimmed }
         const assistantMsg: ChatMessage = { id: uid(), role: 'assistant', content: '', reasoning: '' }
 

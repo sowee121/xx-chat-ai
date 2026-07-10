@@ -2,7 +2,7 @@
 
 > **文档性质**：本地修复排期用，与功能方案 `docs/plan.md` 分离。  
 > **来源**：2026-07 代码审查（`chat.ts` / `openai.ts` / `chatStore.ts` / `sseClient.ts` / `thinkingParser.ts` 等）。  
-> **状态**：待排期修复（本文档仅记录问题与方案，**尚未改代码**）。
+> **状态**：BUG-01～03、BUG-07 已修复；其余待排期。
 
 ---
 
@@ -10,13 +10,13 @@
 
 | 优先级 | ID | 简述 | 影响 |
 | --- | --- | --- | --- |
-| P0 | BUG-01 | 仅有推理、无正文时不落库 assistant | 刷新后 AI 回复丢失 |
-| P1 | BUG-02 | 空正文 assistant 进入多轮上下文 | 后续请求质量下降 |
-| P1 | BUG-03 | 流式报错时不保存已生成 partial 正文 | 刷新后半截回复丢失 |
+| P0 | BUG-01 | 仅有推理、无正文时不落库 assistant | 刷新后 AI 回复丢失 | **已修复** |
+| P1 | BUG-02 | 空正文 assistant 进入多轮上下文 | 后续请求质量下降 | **已修复** |
+| P1 | BUG-03 | 流式报错时不保存已生成 partial 正文 | 刷新后半截回复丢失 | **已修复** |
 | P2 | BUG-04 | `sseClient` 中 `JSON.parse` 无保护 | 畸形 SSE 可能误报网络错误 |
 | P2 | BUG-05 | 推理字段 + 标签双通道可能重复展示 | 特定网关下推理重复 |
 | P2 | BUG-06 | 无效 `sessionCode` 静默创建空会话 | 历史对不上、困惑 |
-| P3 | BUG-07 | abort 后 `openai.ts` `finally` 仍 flush | 理论上的多余 yield，低风险 |
+| P3 | BUG-07 | abort 后 `openai.ts` `finally` 仍 flush | 理论上的多余 yield，低风险 | **已修复** |
 
 **建议修复顺序**：BUG-01 → BUG-02 → BUG-03 → BUG-04 → BUG-05 → BUG-06 → BUG-07
 
@@ -24,7 +24,9 @@
 
 ## 2. 问题详情
 
-### BUG-01 · 仅有推理无正文时 assistant 不落库 【P0】
+### BUG-01 · 仅有推理无正文时 assistant 不落库 【P0】✅ 已修复
+
+**修复**（2026-07-10）：`chat.ts` 记录 `hadReasoning`；`textToSave` 为空但有推理时落库占位符 `（本轮无正文输出）`（含 abort 路径）。
 
 **现象**
 
@@ -61,7 +63,9 @@ if (textToSave) historyStore.appendMessage(session.sessionCode, 'assistant', tex
 
 ---
 
-### BUG-02 · 空正文 assistant 污染多轮上下文 【P1】
+### BUG-02 · 空正文 assistant 污染多轮上下文 【P1】✅ 已修复
+
+**修复**（2026-07-10）：`chatStore.send` 构造 `history` 时过滤 `assistant` 且 `content` 为空的条目。
 
 **现象**
 
@@ -89,7 +93,9 @@ const history = state.messages.map((m) => ({ role: m.role, content: m.content })
 
 ---
 
-### BUG-03 · 流式报错时不保存 partial 正文 【P1】
+### BUG-03 · 流式报错时不保存 partial 正文 【P1】✅ 已修复
+
+**修复**（2026-07-10）：`chat.ts` 的 `catch` 中调用 `persistAssistantIfAny`，与 abort 路径一致。
 
 **现象**
 
@@ -213,7 +219,9 @@ sessionCode: sessionCode ?? randomUUID(),
 
 ---
 
-### BUG-07 · abort 后 provider `finally` 仍 flush 【P3】
+### BUG-07 · abort 后 provider `finally` 仍 flush 【P3】✅ 已修复
+
+**修复**（2026-07-10）：`openai.ts` 的 `finally` 在 `signal.aborted` 时跳过 `parser.flush()`；正常结束与报错路径仍会 flush 未闭合标签。
 
 **现象**
 
@@ -257,9 +265,9 @@ sessionCode: sessionCode ?? randomUUID(),
 
 ### Phase A — 数据一致性（优先）
 
-- [ ] BUG-01：空正文落库策略（产品确认占位符 vs 存 reasoning 列）
-- [ ] BUG-02：过滤空 assistant history
-- [ ] BUG-03：`catch` 路径 partial 落库
+- [x] BUG-01：空正文落库策略（占位符 `（本轮无正文输出）`）
+- [x] BUG-02：过滤空 assistant history
+- [x] BUG-03：`catch` 路径 partial 落库
 
 **预估改动面**： primarily `chat.ts` + `chatStore.ts`  
 **回归**：正常流式完成、停止生成、仅推理模型、刷新后历史列表
@@ -272,7 +280,7 @@ sessionCode: sessionCode ?? randomUUID(),
 ### Phase C — Provider 边缘
 
 - [ ] BUG-05：双通道推理去重
-- [ ] BUG-07：abort 时 skip flush
+- [x] BUG-07：abort 时 skip flush
 
 ---
 

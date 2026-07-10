@@ -36,7 +36,7 @@ lerna-debug.log*
 # Local overrides（如 Vite *.local 配置）
 *.local
 
-# SQLite（含 WAL/SHM；覆盖 data/ 与 DB_PATH 自定义路径）
+# SQLite（含 WAL/SHM；覆盖 data/ 与 XX_DB_PATH 自定义路径）
 *.db
 *.db-wal
 *.db-shm

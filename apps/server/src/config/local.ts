@@ -55,7 +55,7 @@ export function getOpenaiCredentials(): {
 }
 
 export function getConfiguredDefaultProvider(): Provider | undefined {
-  const env = process.env.DEFAULT_PROVIDER as Provider | undefined;
+  const env = process.env.XX_DEFAULT_PROVIDER as Provider | undefined;
   if (env === 'mock' || env === 'openai') return env;
   const file = loadFile();
   if (file?.defaultProvider === 'mock' || file?.defaultProvider === 'openai') {

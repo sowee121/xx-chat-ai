@@ -6,8 +6,8 @@ import type { Role } from '../types.js';
 import type { HistoryStore, Session, SessionSummary, StoredMessage } from './history.js';
 import { titleFromQuery } from './history.js';
 
-const DB_PATH = process.env.DB_PATH
-  ? resolve(process.env.DB_PATH)
+const DB_PATH = process.env.XX_DB_PATH
+  ? resolve(process.env.XX_DB_PATH)
   : resolve(process.cwd(), 'data/chat.db');
 
 /**

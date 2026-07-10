@@ -4,7 +4,7 @@ import { chatRoutes } from './routes/chat.js';
 import { historyRoutes } from './routes/history.js';
 import { providerRoutes } from './routes/providers.js';
 
-const PORT = Number(process.env.PORT ?? 3001);
+const PORT = Number(process.env.XX_PORT ?? 3001);
 
 const app = Fastify({ logger: true });
 

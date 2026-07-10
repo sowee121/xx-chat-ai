@@ -28,6 +28,24 @@ const bodySchema = {
   },
 };
 
+/** 仅有推理、无正文时落库占位，避免刷新后 assistant 行丢失（BUG-01） */
+const REASONING_ONLY_PLACEHOLDER = '（本轮无正文输出）';
+
+function resolveAssistantContent(textToSave: string, hadReasoning: boolean): string | null {
+  if (textToSave) return textToSave;
+  if (hadReasoning) return REASONING_ONLY_PLACEHOLDER;
+  return null;
+}
+
+function persistAssistantIfAny(
+  sessionCode: string,
+  fullText: string,
+  hadReasoning: boolean,
+): void {
+  const contentToSave = resolveAssistantContent(stripThinkingTags(fullText), hadReasoning);
+  if (contentToSave) historyStore.appendMessage(sessionCode, 'assistant', contentToSave);
+}
+
 export async function chatRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Body: ChatRequestBody }>(
     '/api/chat',
@@ -62,6 +80,7 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
       send('meta', { sessionCode: session.sessionCode, title: session.title });
 
       let fullText = '';
+      let hadReasoning = false;
       try {
         const stream = getProvider(provider)({
           query: body.query,
@@ -72,21 +91,22 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
 
         for await (const delta of stream) {
           if (ac.signal.aborted) break;
+          if (delta.type === 'reasoning') hadReasoning = true;
           if (delta.type === 'text') fullText += delta.content;
           send('delta', delta);
         }
 
-        const textToSave = stripThinkingTags(fullText);
-
         if (ac.signal.aborted) {
-          // 客户端主动停止：连接已断，仅持久化已生成的正文
-          if (textToSave) historyStore.appendMessage(session.sessionCode, 'assistant', textToSave);
+          // 客户端主动停止：连接已断，仅持久化已生成内容
+          persistAssistantIfAny(session.sessionCode, fullText, hadReasoning);
         } else {
-          if (textToSave) historyStore.appendMessage(session.sessionCode, 'assistant', textToSave);
+          persistAssistantIfAny(session.sessionCode, fullText, hadReasoning);
           send('done', { sessionCode: session.sessionCode, finishReason: 'stop' });
         }
       } catch (err) {
         request.log.error(err);
+        // 流式中途报错：仍持久化已生成的 partial（BUG-03）
+        persistAssistantIfAny(session.sessionCode, fullText, hadReasoning);
         send('error', { message: err instanceof Error ? err.message : 'stream error' });
       } finally {
         if (!raw.writableEnded) raw.end();

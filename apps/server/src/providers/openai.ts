@@ -144,8 +144,11 @@ export async function* openaiStream(opts: StreamOptions): ChatStream {
   } catch (err) {
     throw normalizeOpenaiError(err, model);
   } finally {
-    for (const part of parser.flush()) {
-      yield part;
+    // 用户停止/断连时不再 flush，避免 abort 后仍 yield 残留 chunk（BUG-07）
+    if (!signal.aborted) {
+      for (const part of parser.flush()) {
+        yield part;
+      }
     }
   }
 }
