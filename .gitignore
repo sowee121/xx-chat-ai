@@ -1,16 +1,65 @@
+# Dependencies
 node_modules
+
+# Build outputs
 dist
+dist-ssr
 build
-*.local
+
+# TypeScript incremental cache
+*.tsbuildinfo
+
+# Vite dev cache
+.vite
+
+# Test / tooling caches
+coverage
+.cache
+.turbo
+
+# Logs
+*.log
+pnpm-debug.log*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Environment & secrets（*.example 模板可提交）
 .env
 .env.*
 !.env.example
-*.log
+**/config.local.json
+*.pem
+*.key
+
+# Local overrides（如 Vite *.local 配置）
+*.local
+
+# SQLite（含 WAL/SHM；覆盖 data/ 与 DB_PATH 自定义路径）
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+
+# OS
 .DS_Store
-apps/server/data/*.db
-apps/server/data/*.db-*
-apps/server/data/*.sqlite
-apps/server/config.local.json
-apps/web/dist
+Thumbs.db
+
+# Editors
+.vscode/*
+!.vscode/extensions.json
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Cursor 本地状态（.cursor/rules/ 需提交，勿忽略整个 .cursor）
+.cursor/plans/
+apps/web/.cursor/
+
+# Agent skills（本地安装，不进仓库）
 .agents
 skills-lock.json
