@@ -137,9 +137,13 @@
     }
   body {
     @apply bg-background text-foreground;
+    overflow-x: auto;
     }
   html {
     @apply font-sans;
+    }
+  #root {
+    min-width: 320px;
     }
   button:not(:disabled):not([data-sidebar="rail"]) {
     cursor: pointer;
@@ -242,6 +246,24 @@
 
 .generating-dot:nth-child(3) {
   animation-delay: 0.3s;
+}
+
+/* 回到底部：流式生成中边框转圈 */
+@keyframes jump-streaming-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.jump-streaming-spin {
+  animation: jump-streaming-spin 1s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .jump-streaming-spin {
+    animation: none;
+    border-color: color-mix(in oklch, var(--primary) 55%, transparent);
+  }
 }
 
 /* Streamdown 工具栏按钮 */

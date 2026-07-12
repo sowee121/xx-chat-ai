@@ -9,9 +9,13 @@ alwaysApply: false
 编写 / 修改前端 UI 组件时遵循：
 
 1. 优先使用 shadcn 组件的默认样式与内置变体（`variant` / `size`），非必要不覆盖原语（`Button`/`Input` 等）的视觉样式。
-2. 大圆角由全局 `--radius` 驱动（当前 `1rem`）；不要随手写 `rounded-[…]`，改圆角只调 `index.css` 的 `--radius`。
-3. 组件 JSX 内不堆长 class：抽到同级 `ComponentName.styles.ts`，`export const styles = { … } as const`，JSX 用 `className={styles.x}`。
-4. 条件样式：`cn(styles.base, cond && styles.variant)`。
-5. 覆盖 shadcn 原语时用 utility 字符串透传 `className`（依赖 tailwind-merge）；不要用 `@apply` 覆盖原语。
-6. 不引入额外 UI 库或新样式体系（Tailwind + shadcn 之外）。
-7. 不做 plan 明确排除的视觉：gradient 光斑、GlassPanel、自定义 `@theme` 色板覆盖。
+2. **单位约定**
+   - **`px`**：设计稿里的固定布局常量（如侧栏 `280px`、页面最小宽 `320px`）、发丝线、阴影模糊。
+   - **`rem` / Tailwind spacing**：随排版缩放的间距、字号、组件内边距、圆角变量等。
+   - 同一类「固定布局常量」不要混用 `rem` 换算（避免 `17.5rem` 与 `320px` 并存难读）。
+3. 大圆角由全局 `--radius` 驱动（当前 `1rem`）；不要随手写 `rounded-[…]`，改圆角只调 `index.css` 的 `--radius`。
+4. 组件 JSX 内不堆长 class：抽到同级 `ComponentName.styles.ts`，`export const styles = { … } as const`，JSX 用 `className={styles.x}`。
+5. 条件样式：`cn(styles.base, cond && styles.variant)`。
+6. 覆盖 shadcn 原语时用 utility 字符串透传 `className`（依赖 tailwind-merge）；不要用 `@apply` 覆盖原语。
+7. 不引入额外 UI 库或新样式体系（Tailwind + shadcn 之外）。
+8. 不做 plan 明确排除的视觉：gradient 光斑、GlassPanel、自定义 `@theme` 色板覆盖。

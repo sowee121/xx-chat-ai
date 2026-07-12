@@ -1,17 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState, type MutableRefObject } from 'react'
-import { ArrowDown } from 'lucide-react'
 
-import { Button } from '@/components/ui/button'
 import type { ChatMessage } from '@/lib/chat-types'
 import { cn } from '@/lib/utils'
 import { hideGlobalContentShell, runGlobalContentShell } from '@/lib/chatContentShell'
 import { useContentShellVisible } from '@/hooks/useContentShellVisible'
-import {
-  getCachedSessionMessages,
-  getSessionScrollTop,
-  setSessionScrollTop,
-  useChatStore,
-} from '@/stores/chatStore'
+import { getCachedSessionMessages, useChatStore } from '@/stores/chatStore'
+import { JumpToBottomButton } from './JumpToBottomButton'
 import { MessageItem } from './MessageItem'
 import { styles } from './MessageList.styles'
 
@@ -71,19 +65,15 @@ export function MessageList({ sessionCode, active }: MessageListProps) {
   const hasBeenActiveRef = useRef(false)
   const prevCountRef = useRef(count)
   const [showJump, setShowJump] = useState(false)
+  const [jumpInstant, setJumpInstant] = useState(false)
   const [contentMasked, setContentMasked] = useState(false)
   const contentShellVisible = useContentShellVisible()
   const hideScrollContent = active && (contentShellVisible || contentMasked)
-
-  const persistScrollTop = (top: number) => {
-    setSessionScrollTop(sessionCode, top)
-  }
 
   const snapToBottom = () => {
     const el = scrollRef.current
     if (!el) return
     el.scrollTop = el.scrollHeight - el.clientHeight
-    persistScrollTop(el.scrollTop)
   }
 
   const scheduleSnap = () => {
@@ -96,15 +86,6 @@ export function MessageList({ sessionCode, active }: MessageListProps) {
   const beginLayoutSnap = () => {
     layoutSnapUntilRef.current = Date.now() + LAYOUT_SNAP_MS
     scheduleSnap()
-  }
-
-  const restoreSavedScroll = () => {
-    const el = scrollRef.current
-    if (!el || count === 0) return
-    const saved = getSessionScrollTop(sessionCode)
-    if (saved != null) el.scrollTop = saved
-    updateScrollUi(el, followRef, setShowJump)
-    persistScrollTop(el.scrollTop)
   }
 
   const runContentShell = (afterReady?: () => void) => {
@@ -144,7 +125,6 @@ export function MessageList({ sessionCode, active }: MessageListProps) {
     if (!active) return
     const el = scrollRef.current
     if (!el) return
-    persistScrollTop(el.scrollTop)
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= NEAR_BOTTOM_PX
     followRef.current = atBottom
     if (atBottom) {
@@ -157,7 +137,7 @@ export function MessageList({ sessionCode, active }: MessageListProps) {
 
   const hasContent = count > 0
 
-  // 切换会话：layout 阶段先遮内容再挂骨架，避免首帧闪一下
+  // 切换会话：骨架蒙层；首次进入贴底，Keep-Alive 复用则保留 DOM 滚动位置
   useLayoutEffect(() => {
     if (!active) {
       setContentMasked(false)
@@ -170,26 +150,25 @@ export function MessageList({ sessionCode, active }: MessageListProps) {
 
     setContentMasked(true)
 
-    const hasSavedScroll = getSessionScrollTop(sessionCode) != null
+    const revisit = hasBeenActiveRef.current
     if (!hasBeenActiveRef.current) hasBeenActiveRef.current = true
 
     runContentShell(() => {
       setContentMasked(false)
-      if (hasSavedScroll) {
-        restoreSavedScroll()
-      } else {
-        followRef.current = true
-        setShowJump(false)
-        beginLayoutSnap()
+      const el = scrollRef.current
+      if (revisit) {
+        if (el) updateScrollUi(el, followRef, setShowJump)
+        return
       }
+      followRef.current = true
+      setShowJump(false)
+      beginLayoutSnap()
     })
   }, [active, sessionCode, hasContent])
 
   useEffect(() => {
     if (active) return
     hideGlobalContentShell(sessionCode)
-    const el = scrollRef.current
-    if (el) persistScrollTop(el.scrollTop)
   }, [active, sessionCode])
 
   // 激活时重置跳转按钮状态
@@ -198,17 +177,24 @@ export function MessageList({ sessionCode, active }: MessageListProps) {
     jumpingRef.current = false
   }, [active, sessionCode])
 
-  // 仅消息增多时（新发消息）滚到底；流式过程不触发蒙层
-  useEffect(() => {
+  // 新发消息：绘制前立刻贴底并关掉按钮（无退出动画），避免先闪「回到底部」
+  useLayoutEffect(() => {
     if (!active) return
     const prev = prevCountRef.current
     prevCountRef.current = count
     if (count > prev) {
       followRef.current = true
+      setJumpInstant(true)
       setShowJump(false)
+      snapToBottom()
       beginLayoutSnap()
     }
   }, [count, active])
+
+  useEffect(() => {
+    if (showJump || !jumpInstant) return
+    setJumpInstant(false)
+  }, [showJump, jumpInstant])
 
   useEffect(() => {
     if (!active || !followRef.current) return
@@ -218,6 +204,7 @@ export function MessageList({ sessionCode, active }: MessageListProps) {
   const jumpToBottom = () => {
     followRef.current = true
     jumpingRef.current = true
+    setJumpInstant(false)
     setShowJump(false)
     const el = scrollRef.current
     if (!el) return
@@ -255,17 +242,12 @@ export function MessageList({ sessionCode, active }: MessageListProps) {
         </div>
       </div>
 
-      <Button
-        size="icon"
-        variant="ghost"
-        className={cn(styles.jump, showJump ? styles.jumpShown : styles.jumpHidden)}
+      <JumpToBottomButton
+        visible={showJump && !hideScrollContent}
+        streaming={isStreaming}
+        instant={jumpInstant}
         onClick={jumpToBottom}
-        aria-label="回到底部"
-        aria-hidden={!showJump}
-        tabIndex={showJump ? 0 : -1}
-      >
-        <ArrowDown className={styles.jumpIcon} />
-      </Button>
+      />
     </div>
   )
 }

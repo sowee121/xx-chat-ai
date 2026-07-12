@@ -96,43 +96,53 @@ pnpm add next-themes streamdown @streamdown/code @streamdown/mermaid @streamdown
 - 长 Tailwind class 抽到同级 `ComponentName.styles.ts`：`export const styles = { … } as const`
 - 条件样式用 `cn(styles.base, cond && styles.variant)`
 - 不用 `@apply` 覆盖 shadcn 原语
+- **单位**：固定布局常量用 `px`（侧栏宽 `280px`、页面最小宽 `320px`、发丝线/阴影模糊）；间距字号圆角等用 `rem` / Tailwind spacing
+
+### 布局尺寸（固定常量）
+
+| 项 | 值 |
+| --- | --- |
+| 页面最小宽 | `320px`（`#root` / `SidebarProvider`） |
+| 宽屏侧栏宽 | `280px`（`--sidebar-width`） |
+| 移动端抽屉宽 | `max(320px, min(360px, calc(100vw - 40px)))` |
+| 窄屏断点 | `768px`（Tailwind `md`；`useIsMobile` 用 `matchMedia` + `useSyncExternalStore` 与 CSS 对齐） |
 
 ---
 
 ## 3. UI 布局（已实现）
 
 ```
-┌─ Sidebar ────┬─ 主区域 ─────────────────────────────────────┐
-│ [新建对话]    │ [≡][✎]      XX Chat AI      [模型▾][Mock▾] [🌓] │
-│ 历史对话列表  ├──────────────────────────────────────────────┤
-│ (hover 删除 / 批量管理)  │   切换/刷新：全局骨架蒙层 → 内容淡入          │
-│ 列表加载：10 条 h-10 骨架 │   Keep-Alive 多会话面板（隐藏不卸载）        │
-│              │   空状态：居中「嘻嘻，想问点什么？」+ 快捷标签       │
-│              │   有对话：用户右对齐气泡 / AI 全宽 Streamdown    │
-│              │          推理中：ReasoningBlock + 等待卡片(三点) │
-│              │                                              │
-│              │   ╭──────────────────────────────────────╮   │
-│              │   │  嘻嘻，想问点什么？              ( ↑ )    │   │
-│              │   ╰──────────────────────────────────────╯   │
-│              │   底部渐变过渡 + 悬浮输入区                    │
-└──────────────┴──────────────────────────────────────────────┘
+┌─ Sidebar(280px) ┬─ 主区域 ───────────────────────────────────┐
+│ 🐾 XX Chat AI   │ [≡][✎]                    [模型▾][Mock▾] [🌓] │
+│ [新建对话]      ├──────────────────────────────────────────────┤
+│ 历史对话列表    │   切换/刷新：全局骨架蒙层 → 内容淡入          │
+│ (hover 删除 / 批量管理) │ Keep-Alive 多会话面板（隐藏不卸载）        │
+│ 列表加载：10 条 h-10 骨架 │ 空状态：居中「嘻嘻，想问点什么？」+ 快捷标签 │
+│                 │   有对话：用户右对齐气泡 / AI 全宽 Streamdown    │
+│                 │          推理中：ReasoningBlock + 等待卡片(三点) │
+│                 │                                              │
+│                 │   ╭──────────────────────────────────────╮   │
+│                 │   │  嘻嘻，想问点什么？              ( ↑ )    │   │
+│                 │   ╰──────────────────────────────────────╯   │
+│                 │   底部渐变过渡 + 悬浮输入区                    │
+└─────────────────┴──────────────────────────────────────────────┘
 ```
 
 | 区域 | 实现 |
 | --- | --- |
-| 侧栏 | `AppSidebar` + shadcn `Sidebar`（offcanvas）；「新建对话」居中；历史对话列表（`sessionsLoading` + `useDeferredSkeleton` 延时淡出）；标题行固定 `h-10` + 批量按钮占位槽；批量选择与删除；`TooltipProvider` 包裹（必须，否则白屏） |
-| 顶栏 | `ChatHeader`：左 `SidebarTrigger` + 新建对话；中品牌标题；右 `ModelMenu` + `ProviderMenu` + `ModeToggle` |
+| 侧栏 | `AppSidebar` + shadcn `Sidebar`（offcanvas，宽 `280px`）；顶部品牌（`PawPrint` 方标 +「XX Chat AI」`text-xl`）；「新建对话」；历史对话列表（`sessionsLoading` + `useDeferredSkeleton` 延时淡出）；标题行固定 `h-10` + 批量按钮占位槽；批量选择与删除；`TooltipProvider` 包裹（必须，否则白屏） |
+| 顶栏 | `ChatHeader`：左 `SidebarTrigger` + 新建对话；右 `ModelMenu` + `ProviderMenu` + `ModeToggle`（左右 `gap-2`） |
 | 空状态 | `HomeView`：居中标题 + `ChatComposer` + 快捷标签 |
 | 用户消息 | 右对齐 `bg-muted` 圆角气泡（`h-12` 单行等价高度）；hover 显示编辑（回填输入框）+ 复制 |
 | AI 消息 | 全宽 `MarkdownMessage`（`leading-7`）；可选 `ReasoningBlock`（顶栏文案 + 左侧竖线正文） |
 | 等待回复 | 与用户气泡同高的 `bg-muted` 卡片，内三点交替动画（无文案） |
 | 加载骨架 | 聊天区 `MessageContentShell`（全局唯一蒙层，无底色，仅 `bg-muted` 脉冲条）；历史列表 `SessionListSkeleton`（10 条 `h-10`）；时序见 `lib/shellTiming.ts` |
-| 会话切换 | `mountedSessionCodes` Keep-Alive（LRU 上限 10）；`sessionMessagesCache` 命中则跳过 `GET /history/:code`；滚动位置 `sessionScrollTops` 缓存 |
+| 会话切换 | `mountedSessionCodes` Keep-Alive（LRU 上限 10）；`sessionMessagesCache` 命中则跳过 `GET /history/:code`；滚动沿用 DOM（刷新/重挂载贴底） |
 | 输入区 | `ChatComposer` 悬浮底部（`pt-2 pb-6`，与消息列 `py-6` 对齐）；支持 `prefillComposer` 回填编辑 |
 | Provider | `ProviderMenu`（`outline` 胶囊）；流式中禁用 |
 | 模型 | `ModelMenu`（仅 openai）；可搜索过滤 |
-| 智能滚动 | 贴底跟随；离开底部显示「回到底部」 |
-| 图片 | 点击 → `ImageLightbox` |
+| 智能滚动 | 贴底跟随；离开底部显示 `JumpToBottomButton`（流式中边框转圈） |
+| 图片 | 点击 → `ImageLightbox`：缩放 25%–500%、滚轮/按钮/键盘、拖拽平移、双击复原、点背景关闭 |
 
 ### Streamdown 样式覆盖（`index.css`）
 
@@ -202,6 +212,7 @@ xx-chat-ai/
 │   │       │       ├── ChatComposer.tsx + .styles.ts
 │   │       │       ├── HomeView.tsx + .styles.ts
 │   │       │       ├── MessageList.tsx + .styles.ts
+│   │       │       ├── JumpToBottomButton.tsx + .styles.ts
 │   │       │       ├── MessageContentShell.tsx + .styles.ts
 │   │       │       ├── MessageItem.tsx + .styles.ts
 │   │       │       ├── ReasoningBlock.tsx + .styles.ts
@@ -217,6 +228,7 @@ xx-chat-ai/
 │   │       │   ├── waitForColumnReady.ts # 图片/Mermaid 布局稳定检测
 │   │       │   ├── mermaidPlugin.ts | sanitizeMermaid.ts | mathPlugin.ts
 │   │       ├── hooks/
+│   │       │   ├── use-mobile.ts         # 窄屏断点（matchMedia + useSyncExternalStore）
 │   │       │   ├── useSyncSessionRoute.ts
 │   │       │   ├── useSessionNavigation.ts
 │   │       │   ├── useContentShellVisible.ts
@@ -552,8 +564,7 @@ flowchart LR
 | 机制 | 说明 |
 | --- | --- |
 | `sessionMessagesCache` | 切走时快照消息；`openSession` 命中则直接恢复，**不请求**详情 API |
-| `mountedSessionCodes` | 最多 10 个 `MessageList` 面板 keep-alive（`invisible` 隐藏不卸载） |
-| `sessionScrollTops` | 各会话滚动位置缓存，切回恢复 |
+| `mountedSessionCodes` | 最多 10 个 `MessageList` 面板 keep-alive（`invisible` 隐藏不卸载）；切回沿用 DOM `scrollTop` |
 | `_routeLoadSeq` | 路由竞态序号，丢弃过期 `openSession` 结果 |
 | `fetchSessionDeduped` | Strict Mode 双 effect 请求去重 |
 | 稳定 message id | 服务端 `id` → `msg-{id}`，避免图片/Markdown 重挂载闪动 |
@@ -626,6 +637,7 @@ pnpm build   # web + server
 | 切换会话重复拉详情 | 缓存命中时 `openSession` 早返回，跳过 GET |
 | 骨架屏一闪而过 | `shellTiming` 最短展示 + 延时 + 400ms 淡出 |
 | 侧栏标题行刷新抖动 | `groupHeader` 固定 `h-10` + `batchToggleSlot` 占位 |
+| 宽窄屏临界侧栏闪烁 | `useIsMobile` 改 `matchMedia` + `useSyncExternalStore`，与 CSS `md` 对齐；进出窄屏关闭 `openMobile` |
 
 **待修复 Bug 排期**：见 [`docs/bugs-plan.md`](./bugs-plan.md)（BUG-01～03、07 已修复，其余待排期）。
 

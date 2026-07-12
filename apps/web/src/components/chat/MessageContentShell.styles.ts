@@ -1,6 +1,6 @@
 export const styles = {
   shell:
-    'pointer-events-none absolute inset-x-0 top-0 z-20 flex min-h-0 flex-col transition-opacity duration-[400ms] ease-in-out motion-reduce:transition-none bottom-[var(--chat-composer-pad,5.5rem)]',
+    'pointer-events-none absolute inset-x-0 top-0 z-20 flex min-h-0 flex-col bg-background transition-opacity duration-[400ms] ease-in-out motion-reduce:transition-none bottom-[var(--chat-composer-pad,5.5rem)]',
   shellVisible: 'opacity-100',
   shellHidden: 'opacity-0',
   shellInner: 'mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col px-4 py-6 sm:px-6',

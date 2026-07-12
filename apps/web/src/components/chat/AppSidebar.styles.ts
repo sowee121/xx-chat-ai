@@ -1,5 +1,10 @@
 export const styles = {
-  header: 'h-14 shrink-0 flex-row items-center gap-0 px-4 py-0',
+  header: 'flex flex-col gap-2 px-4 pt-0 pb-2',
+  brand: 'flex h-14 shrink-0 items-center gap-3',
+  brandMark:
+    'flex size-9 shrink-0 items-center justify-center rounded-xl bg-foreground text-background',
+  brandIcon: 'size-6 stroke-[2]',
+  brandName: 'truncate text-xl font-semibold tracking-tight',
   newBtn:
     'h-11 w-full justify-center gap-2.5 rounded-xl border-0 bg-background px-3 text-sm font-medium shadow-sm transition-[box-shadow,background-color] hover:bg-background hover:shadow-md active:shadow-sm',
   newBtnIcon: 'size-[1.125rem] shrink-0',

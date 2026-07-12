@@ -33,8 +33,6 @@ export function ChatHeader() {
         </Button>
       </div>
 
-      <span className={styles.title}>XX Chat AI</span>
-
       <div className={styles.actions}>
         <ModelMenu />
         <ProviderMenu />

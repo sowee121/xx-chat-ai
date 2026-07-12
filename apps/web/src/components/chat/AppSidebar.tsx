@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { Check, Minus, MoreHorizontal, SquarePen, Trash2 } from 'lucide-react'
+import { Check, Minus, MoreHorizontal, PawPrint, SquarePen, Trash2 } from 'lucide-react'
 
 import {
   AlertDialog,
@@ -146,6 +146,12 @@ export function AppSidebar() {
   return (
     <Sidebar collapsible="offcanvas">
       <SidebarHeader className={styles.header}>
+        <div className={styles.brand}>
+          <span className={styles.brandMark} aria-hidden>
+            <PawPrint className={styles.brandIcon} />
+          </span>
+          <span className={styles.brandName}>XX Chat AI</span>
+        </div>
         <Button variant="ghost" size="lg" className={styles.newBtn} onClick={handleNew}>
           <SquarePen className={styles.newBtnIcon} />
           新建对话

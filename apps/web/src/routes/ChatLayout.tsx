@@ -22,7 +22,8 @@ export function ChatLayout() {
   const mountedSessionCodes = useChatStore((s) => s.mountedSessionCodes)
   const activeSessionCode = useChatStore((s) => s.sessionCode)
   const hasMessages = useChatStore((s) => s.messages.length > 0)
-  const showChat = hasMessages || Boolean(routeCode) || mountedSessionCodes.length > 0
+  // 勿用 mountedSessionCodes：新建对话后 Keep-Alive 仍有残留，会挡住 HomeView
+  const showChat = Boolean(routeCode) || hasMessages || Boolean(activeSessionCode)
 
   useEffect(() => {
     const el = composerRef.current

@@ -26,8 +26,14 @@ import { PanelLeftClose, PanelLeftOpen } from "lucide-react"
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state"
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
-const SIDEBAR_WIDTH = "16.25rem"
-const SIDEBAR_WIDTH_MOBILE = "18.75rem"
+const SIDEBAR_WIDTH = "280px"
+/**
+ * 移动端抽屉宽度：
+ * - 下限不低于 320px（与页面 min-width 一致），避免极窄视口把文案压成竖排
+ * - 大屏不超过 360px；右侧留出遮罩便于关闭
+ * - 需用 data-[side=*]:w-* 覆盖 Sheet 默认 w-3/4（更高特异性）
+ */
+const SIDEBAR_WIDTH_MOBILE = "max(320px, min(360px, calc(100vw - 40px)))"
 const SIDEBAR_WIDTH_ICON = "3rem"
 const SIDEBAR_KEYBOARD_SHORTCUT = "b"
 
@@ -67,6 +73,11 @@ function SidebarProvider({
 }) {
   const isMobile = useIsMobile()
   const [openMobile, setOpenMobile] = React.useState(false)
+
+  // 进出窄屏时关掉抽屉，避免临界宽度下 Sheet 残留 open 造成闪一下
+  React.useEffect(() => {
+    setOpenMobile(false)
+  }, [isMobile])
 
   // This is the internal state of the sidebar.
   // We use openProp and setOpenProp for control from outside the component.
@@ -186,7 +197,7 @@ function Sidebar({
           data-sidebar="sidebar"
           data-slot="sidebar"
           data-mobile="true"
-          className="w-(--sidebar-width) bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden"
+          className="w-(--sidebar-width) max-w-none bg-sidebar p-0 text-sidebar-foreground data-[side=left]:w-(--sidebar-width) data-[side=right]:w-(--sidebar-width) data-[side=left]:max-w-none data-[side=right]:max-w-none sm:max-w-none [&>button]:hidden"
           style={
             {
               "--sidebar-width": SIDEBAR_WIDTH_MOBILE,

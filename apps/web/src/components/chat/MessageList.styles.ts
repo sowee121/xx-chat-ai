@@ -8,10 +8,6 @@ export const styles = {
   column: 'mx-auto flex w-full max-w-3xl flex-col gap-6 py-6',
   bottomSpacer: 'h-[var(--chat-composer-pad,5.5rem)] shrink-0',
   error: 'border-destructive/30 bg-destructive/10 text-destructive rounded-xl border px-4 py-3 text-sm',
-  jump: 'absolute bottom-[calc(var(--chat-composer-pad,5.5rem)+0.5rem)] left-1/2 z-30 size-9 -translate-x-1/2 rounded-full border border-border/60 bg-background text-foreground shadow-lg transition-all duration-200 ease-out motion-reduce:transition-none hover:border-border hover:bg-muted hover:shadow-xl active:bg-muted/80',
-  jumpShown: 'translate-y-0 scale-100 opacity-100',
-  jumpHidden: 'pointer-events-none translate-y-2 scale-90 opacity-0',
-  jumpIcon: 'size-5',
   scrollLoading: 'opacity-0',
   scrollReady: 'opacity-100 transition-opacity duration-[400ms] ease-in-out motion-reduce:transition-none',
 } as const

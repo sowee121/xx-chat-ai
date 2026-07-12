@@ -68,20 +68,8 @@ function syncSessionCache(sessionCode: string, messages: ChatMessage[]) {
   sessionMessagesCache.set(sessionCode, snapshotMessages(messages))
 }
 
-/** 各会话滚动位置（切换/隐藏后 DOM scrollTop 可能归零，需显式缓存） */
-const sessionScrollTops = new Map<string, number>()
-
 function dropSessionCache(sessionCode: string) {
   sessionMessagesCache.delete(sessionCode)
-  sessionScrollTops.delete(sessionCode)
-}
-
-export function getSessionScrollTop(sessionCode: string): number | undefined {
-  return sessionScrollTops.get(sessionCode)
-}
-
-export function setSessionScrollTop(sessionCode: string, top: number): void {
-  sessionScrollTops.set(sessionCode, top)
 }
 
 export function getCachedSessionMessages(sessionCode: string): ChatMessage[] | undefined {
@@ -234,7 +222,14 @@ export const useChatStore = create<ChatState>()(
 
       newChat: () => {
         get()._abort?.abort()
-        set({ messages: [], sessionCode: undefined, error: undefined, isStreaming: false, _abort: undefined })
+        set({
+          messages: [],
+          sessionCode: undefined,
+          error: undefined,
+          isStreaming: false,
+          _abort: undefined,
+          mountedSessionCodes: [],
+        })
       },
 
       loadSessions: async () =>
