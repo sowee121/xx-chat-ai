@@ -1,3 +1,6 @@
+/**
+ * shadcn Sidebar 原语（侧栏布局与移动端抽屉）。
+ */
 "use client"
 
 import * as React from "react"
@@ -224,7 +227,6 @@ function Sidebar({
       data-side={side}
       data-slot="sidebar"
     >
-      {/* This is what handles the sidebar gap on desktop */}
       <div
         data-slot="sidebar-gap"
         className={cn(

@@ -1,3 +1,6 @@
+/**
+ * 侧栏：品牌、新建对话、历史列表与批量删除。
+ */
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Check, Minus, MoreHorizontal, PawPrint, SquarePen, Trash2 } from 'lucide-react'

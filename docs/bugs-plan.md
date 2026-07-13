@@ -26,7 +26,10 @@
 
 ### BUG-01 · 仅有推理无正文时 assistant 不落库 【P0】✅ 已修复
 
-**修复**（2026-07-10）：`chat.ts` 记录 `hadReasoning`；`textToSave` 为空但有推理时落库占位符 `（本轮无正文输出）`（含 abort 路径）。
+**修复**（2026-07-10 / 续）：
+
+1. `chat.ts` 记录 `hadReasoning`；`textToSave` 为空但有推理时落库占位符 `（本轮无正文输出）`（含 abort / error 路径）。
+2. `messages.reasoning` 列落库思考正文；历史 API / 前端回放 `ReasoningBlock`（默认折叠）；多轮请求不回传 reasoning。
 
 **现象**
 
@@ -39,27 +42,20 @@
 - 模型整轮只输出思考、无可见正文。
 - 用户过早「停止生成」，尚未收到任何 `text` delta。
 
-**根因**
+**根因（历史）**
 
-`apps/server/src/routes/chat.ts` 中 `fullText` 只累加 `type === 'text'` 的 delta；落库条件为 `textToSave` 非空：
-
-```ts
-const textToSave = stripThinkingTags(fullText);
-if (textToSave) historyStore.appendMessage(session.sessionCode, 'assistant', textToSave);
-```
-
-推理走 `reasoning` 通道；早期设计不落库。**现已落库** `messages.reasoning`（历史可还原思考块）；BUG-01 的占位符策略仍保留（仅有推理无正文时）。
+`apps/server/src/routes/chat.ts` 中 `fullText` 只累加 `type === 'text'` 的 delta；早期落库条件为 `textToSave` 非空，推理不落库。
 
 **涉及文件**
 
 - `apps/server/src/routes/chat.ts`
-- （可选联动）`apps/web/src/stores/chatStore.ts` — 刷新后与 DB 不一致时的 UI 表现
+- `apps/server/src/store/sqlite.ts` / `history.ts`
+- `apps/web/src/stores/chatStore.ts`、`ReasoningBlock.tsx`
 
-**修复方向（待实现）**
+**验收**
 
-1. **最小方案**：`textToSave` 为空但本轮曾收到过 `reasoning`（服务端需记 flag）时，仍 `appendMessage` 一条 assistant，内容为约定占位符，如 `（本轮无正文输出）`；或存 strip 后的极短摘要（需产品确认）。
-2. **更完整方案**：`messages` 表增加可选 `reasoning` 列或 metadata JSON，历史回放时可还原 `ReasoningBlock`（改动面大，单独立项）。
-3. **验收**：Mock 或构造「只推 reasoning、不推 text」的流 → 刷新后 assistant 行仍存在；正常有正文的轮次行为不变。
+- 只推 reasoning、不推 text → 刷新后 assistant 行仍在（占位符 + 可展开思考块）
+- 正常有正文的轮次：正文 + reasoning 均可还原；多轮 body 不含 reasoning
 
 ---
 
@@ -85,11 +81,9 @@ const history = state.messages.map((m) => ({ role: m.role, content: m.content })
 
 - `apps/web/src/stores/chatStore.ts`
 
-**修复方向（待实现）**
+**验收**
 
-1. 构造 `history` 时过滤 `role === 'assistant' && !content.trim()` 的条目。
-2. 或：与 BUG-01 联动，保证落库后 `openSession` 拉取的历史与内存一致（无空 assistant）。
-3. **验收**：上一轮仅推理无正文 → 下一轮请求的 `messages` 中不包含空 assistant；正常多轮对话不受影响。
+- 上一轮仅推理无正文 → 下一轮请求的 `messages` 中不包含空 assistant；正常多轮对话不受影响
 
 ---
 
@@ -119,11 +113,9 @@ const history = state.messages.map((m) => ({ role: m.role, content: m.content })
 
 - `apps/server/src/routes/chat.ts`
 
-**修复方向（待实现）**
+**验收**
 
-1. 在 `catch` 中复用 abort 逻辑：`stripThinkingTags(fullText)` 非空则 `appendMessage`。
-2. 注意：连接已断时 `send('error')` 可能写不出去，落库仍应执行。
-3. **验收**：模拟流式中途 500 → DB 有 partial assistant；与 abort 路径行为对齐。
+- 模拟流式中途 500 → DB 有 partial assistant；与 abort 路径行为对齐
 
 ---
 
@@ -243,10 +235,13 @@ sessionCode: sessionCode ?? randomUUID(),
 
 未区分 `signal.aborted` 与正常结束。
 
-**修复方向（待实现）**
+**涉及文件**
 
-1. `finally` 内若 `signal.aborted` 则跳过 flush，或仅 flush 已被 chat 路由消费的语义下必要部分。
-2. **验收**：停止生成无多余 SSE；正常结束仍 flush 未闭合标签。
+- `apps/server/src/providers/openai.ts`
+
+**验收**
+
+- 停止生成无多余 SSE；正常结束仍 flush 未闭合标签
 
 ---
 
@@ -307,4 +302,4 @@ sessionCode: sessionCode ?? randomUUID(),
 
 ---
 
-*最后更新：2026-07-10（同步 Phase 6 会话缓存与骨架屏行为）*
+*最后更新：2026-07-13（同步 reasoning 落库完成态与等待动效文档）*

@@ -1,3 +1,6 @@
+/**
+ * OpenAI 兼容协议流式代理，含推理字段归一化。
+ */
 import OpenAI from 'openai';
 import { getOpenaiCredentials } from '../config/local.js';
 import { extractReasoningFromDelta } from '../lib/reasoningDelta.js';
@@ -6,6 +9,7 @@ import { DEFAULT_SYSTEM_PROMPT } from '../prompts/systemPrompt.js';
 import type { ChatStream, StreamOptions } from '../types.js';
 import { isOpenaiConfigured } from './config.js';
 
+/** 按 apiKey+baseURL 缓存客户端，配置变更时重建 */
 let client: OpenAI | null = null;
 let clientKey = '';
 
@@ -21,6 +25,7 @@ export function getOpenaiClient(): OpenAI {
   return client;
 }
 
+/** 将 SDK 错误转为面向用户的中文提示 */
 function normalizeOpenaiError(err: unknown, model?: string): Error {
   if (err instanceof OpenAI.APIError) {
     if (err.status === 401) {
@@ -54,9 +59,11 @@ export function filterChatModels(ids: string[]): string[] {
     .sort((a, b) => a.localeCompare(b));
 }
 
+/** 模型列表内存缓存（10 分钟） */
 let modelsCache: { at: number; models: string[] } | null = null;
 const MODELS_TTL_MS = 10 * 60 * 1000;
 
+/** 拉取并过滤对话模型；接口失败时回退到配置默认模型 */
 export async function listOpenaiModels(): Promise<string[]> {
   if (!isOpenaiConfigured()) return [];
 
@@ -92,6 +99,7 @@ type DeltaWithReasoning = {
   thinking_blocks?: unknown;
 };
 
+/** 将 content 片段推入思考标签解析器并产出 reasoning/text */
 function* emitParsed(parser: ThinkingStreamParser, text: string) {
   for (const part of parser.push(text)) {
     yield part;
@@ -127,6 +135,7 @@ export async function* openaiStream(opts: StreamOptions): ChatStream {
       const delta = chunk.choices[0]?.delta as DeltaWithReasoning | undefined;
       if (!delta) continue;
 
+      // 优先走独立推理字段；否则再解析 content 内标签
       const reasoning = extractReasoningFromDelta(delta as Record<string, unknown>);
       if (reasoning) {
         yield { type: 'reasoning', content: reasoning };

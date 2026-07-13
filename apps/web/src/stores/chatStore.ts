@@ -1,3 +1,6 @@
+/**
+ * 聊天全局状态：SSE 发送、会话缓存、Keep-Alive 与 Provider/模型。
+ */
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { ChatMessage, Provider, ProviderInfo, SessionSummary, StoredMessage } from '@/lib/chat-types'
@@ -28,6 +31,7 @@ function once<T>(slot: { current: Promise<T> | null }, factory: () => Promise<T>
 const loadProvidersOnce = { current: null as Promise<void> | null }
 const loadSessionsOnce = { current: null as Promise<void> | null }
 const loadModelsOnce = { current: null as Promise<void> | null }
+/** 同一 sessionCode 详情请求去重（Strict Mode 双 effect） */
 const sessionDetailInflight = new Map<string, Promise<Awaited<ReturnType<typeof fetchSession>>>>()
 
 function fetchSessionDeduped(sessionCode: string) {
@@ -40,6 +44,7 @@ function fetchSessionDeduped(sessionCode: string) {
   return promise
 }
 
+/** 路由竞态：序号变化则丢弃过期 openSession 结果 */
 function isStaleRouteLoad(requestedSeq: number): boolean {
   return requestedSeq !== useChatStore.getState()._routeLoadSeq
 }
@@ -47,6 +52,7 @@ function isStaleRouteLoad(requestedSeq: number): boolean {
 /** 内存缓存：切回已访问会话时复用同一批 message 对象，避免图片/Markdown 重挂载闪动 */
 const sessionMessagesCache = new Map<string, ChatMessage[]>()
 
+/** 服务端 id → 稳定前端 id，减少重挂载闪动 */
 function toChatMessages(stored: StoredMessage[]): ChatMessage[] {
   return stored.map((m) => ({
     id: m.id != null ? `msg-${m.id}` : uid(),
@@ -93,6 +99,7 @@ type ChatStoreSet = (
 ) => void
 type ChatStoreGet = () => ChatState
 
+/** 将 sessionCode 记入挂载列表，超限淘汰最旧非当前会话 */
 function mountSessionCode(get: ChatStoreGet, set: ChatStoreSet, sessionCode: string): void {
   const activeCode = get().sessionCode
 
@@ -372,7 +379,7 @@ export const useChatStore = create<ChatState>()(
         const state = get()
         if (!trimmed || state.isStreaming) return
 
-        // 多轮上下文只带正文，不回传 reasoning
+        // 多轮上下文只带正文，过滤空 assistant，且不回传 reasoning（BUG-02）
         const history = state.messages
           .filter((m) => m.role !== 'assistant' || m.content.trim().length > 0)
           .map((m) => ({ role: m.role, content: m.content }))
@@ -387,6 +394,7 @@ export const useChatStore = create<ChatState>()(
           _abort: ac,
         })
 
+        // 按 delta.type 分别累加 reasoning / content
         const appendToAssistant = (delta: { type: 'reasoning' | 'text'; content: string }) =>
           set((s) => {
             const messages = s.messages.slice()
@@ -427,7 +435,7 @@ export const useChatStore = create<ChatState>()(
           },
         )
 
-        // 兜底：流程结束后确保状态复位
+        // 兜底：流程结束后确保流式状态复位
         if (get().isStreaming) set({ isStreaming: false, _abort: undefined })
         const code = get().sessionCode
         if (code) syncSessionCache(code, get().messages)

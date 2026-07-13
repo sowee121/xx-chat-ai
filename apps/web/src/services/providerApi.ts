@@ -1,3 +1,6 @@
+/**
+ * Provider / 模型列表 HTTP API 封装。
+ */
 import type { ModelsResponse, ProvidersResponse } from '@/lib/chat-types'
 
 export async function fetchProviders(): Promise<ProvidersResponse> {

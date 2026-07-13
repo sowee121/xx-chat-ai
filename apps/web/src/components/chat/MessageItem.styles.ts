@@ -1,3 +1,6 @@
+/**
+ * MessageItem 样式类名。
+ */
 export const styles = {
   userRow: 'flex justify-end',
   userWrap: 'group/user flex max-w-[80%] items-center gap-1',

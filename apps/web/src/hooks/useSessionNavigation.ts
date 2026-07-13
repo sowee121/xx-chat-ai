@@ -1,3 +1,6 @@
+/**
+ * 会话导航：新建对话 / 打开历史时同步 URL。
+ */
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { chatSessionPath } from '@/lib/chat-routes'

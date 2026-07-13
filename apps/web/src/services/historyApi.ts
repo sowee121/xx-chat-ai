@@ -1,3 +1,6 @@
+/**
+ * 历史对话 HTTP API 封装。
+ */
 import type { SessionDetail, SessionSummary } from '@/lib/chat-types'
 
 export async function fetchSessions(): Promise<SessionSummary[]> {

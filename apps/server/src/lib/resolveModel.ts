@@ -1,3 +1,6 @@
+/**
+ * 解析本次请求实际使用的模型（与 openaiStream 一致）。
+ */
 import { getOpenaiCredentials } from '../config/local.js';
 import type { Provider } from '../types.js';
 

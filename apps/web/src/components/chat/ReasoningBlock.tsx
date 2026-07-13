@@ -1,3 +1,6 @@
+/**
+ * 推理块：流式展开、「正在思考」扫光与历史折叠。
+ */
 import { useEffect, useRef, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 
@@ -12,6 +15,7 @@ interface ReasoningBlockProps {
 
 export function ReasoningBlock({ content, streaming = false }: ReasoningBlockProps) {
   const [open, setOpen] = useState(streaming)
+  // 用户手动折叠/展开后，不再被 streaming 副作用强制改 open
   const [userToggled, setUserToggled] = useState(false)
   const [elapsedSec, setElapsedSec] = useState<number | null>(null)
   const startRef = useRef<number | null>(null)
@@ -23,6 +27,7 @@ export function ReasoningBlock({ content, streaming = false }: ReasoningBlockPro
       return
     }
 
+    // 流结束：记录用时，未手动操作则默认折叠
     if (startRef.current !== null) {
       const sec = Math.max(1, Math.round((Date.now() - startRef.current) / 1000))
       setElapsedSec(sec)

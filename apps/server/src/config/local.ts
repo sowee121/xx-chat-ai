@@ -1,3 +1,6 @@
+/**
+ * 读取本地配置（环境变量优先于 config.local.json）。
+ */
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { Provider } from '../types.js';

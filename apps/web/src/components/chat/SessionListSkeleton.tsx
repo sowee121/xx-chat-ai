@@ -1,3 +1,6 @@
+/**
+ * 历史列表骨架屏（10 条占位）。
+ */
 import { Skeleton } from '@/components/ui/skeleton'
 import { SidebarMenu, SidebarMenuItem } from '@/components/ui/sidebar'
 import { cn } from '@/lib/utils'

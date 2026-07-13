@@ -1,3 +1,6 @@
+/**
+ * Mock Provider：按关键词返回多格式流式示例。
+ */
 import type { ChatStream, StreamOptions } from '../types.js';
 
 function sleep(ms: number): Promise<void> {
@@ -198,6 +201,7 @@ function* chunkText(text: string): Generator<string> {
   }
 }
 
+/** 按关键词生成 Markdown，再分片 yield 模拟真实 SSE */
 export async function* mockStream(opts: StreamOptions): ChatStream {
   const { query, signal } = opts;
   const full = buildMockMarkdown(query);

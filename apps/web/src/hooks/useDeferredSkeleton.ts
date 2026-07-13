@@ -1,3 +1,6 @@
+/**
+ * 加载结束后延时淡出骨架，与聊天区蒙层节奏一致。
+ */
 import { useEffect, useRef, useState } from 'react'
 
 import { SHELL_FADE_MS, SHELL_HIDE_DELAY_MS, SHELL_MIN_VISIBLE_MS } from '@/lib/shellTiming'

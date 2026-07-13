@@ -1,3 +1,6 @@
+/**
+ * 窄屏断点：matchMedia + useSyncExternalStore，与 Tailwind md 对齐。
+ */
 import * as React from "react"
 
 const MOBILE_BREAKPOINT = 768

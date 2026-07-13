@@ -1,3 +1,7 @@
+/**
+ * 聊天 URL 路径常量与构造。
+ */
+
 /** 已有对话的路由前缀：`/chat/:sessionCode` */
 export const CHAT_SESSION_PREFIX = '/chat'
 

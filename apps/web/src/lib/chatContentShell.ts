@@ -1,3 +1,6 @@
+/**
+ * 全局聊天区骨架蒙层控制。
+ */
 import { waitForColumnReady } from '@/lib/waitForColumnReady'
 import {
   SHELL_FADE_MS,

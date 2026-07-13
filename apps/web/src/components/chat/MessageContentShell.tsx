@@ -1,3 +1,6 @@
+/**
+ * 聊天区全局骨架蒙层 UI。
+ */
 import { cn } from '@/lib/utils'
 import { styles } from './MessageContentShell.styles'
 import { styles as messageStyles } from './MessageItem.styles'

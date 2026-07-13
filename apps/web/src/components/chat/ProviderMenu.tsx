@@ -1,3 +1,6 @@
+/**
+ * Provider 下拉：Mock / OpenAI 切换。
+ */
 import { ChevronDown } from 'lucide-react'
 
 import type { Provider } from '@/lib/chat-types'

@@ -1,3 +1,6 @@
+/**
+ * 应用壳：SidebarProvider、TooltipProvider 与路由出口。
+ */
 import { useEffect } from 'react'
 import { Route, Routes } from 'react-router-dom'
 

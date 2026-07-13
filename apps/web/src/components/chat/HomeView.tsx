@@ -1,3 +1,6 @@
+/**
+ * 空状态首页：引导文案、输入区与快捷标签。
+ */
 import { useChatStore } from '@/stores/chatStore'
 import { styles } from './HomeView.styles'
 

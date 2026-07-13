@@ -119,7 +119,7 @@ pnpm add next-themes streamdown @streamdown/code @streamdown/mermaid @streamdown
 │ (hover 删除 / 批量管理) │ Keep-Alive 多会话面板（隐藏不卸载）        │
 │ 列表加载：10 条 h-10 骨架 │ 空状态：居中「嘻嘻，想问点什么？」+ 快捷标签 │
 │                 │   有对话：用户右对齐气泡 / AI 全宽 Streamdown    │
-│                 │          推理中：ReasoningBlock + 等待三点动画 │
+│                 │          推理中：ReasoningBlock（扫光）+ ThreeDots │
 │                 │                                              │
 │                 │   ╭──────────────────────────────────────╮   │
 │                 │   │  嘻嘻，想问点什么？              ( ↑ )    │   │
@@ -134,8 +134,8 @@ pnpm add next-themes streamdown @streamdown/code @streamdown/mermaid @streamdown
 | 顶栏 | `ChatHeader`：左 `SidebarTrigger` + 新建对话；右 `ModelMenu` + `ProviderMenu` + `ModeToggle`（左右 `gap-2`） |
 | 空状态 | `HomeView`：居中标题 + `ChatComposer` + 快捷标签 |
 | 用户消息 | 右对齐 `bg-muted` 圆角气泡（`h-12` 单行等价高度）；hover 显示编辑（回填输入框）+ 复制 |
-| AI 消息 | 全宽 `MarkdownMessage`（`leading-7`）；可选 `ReasoningBlock`（历史默认折叠；流式中自动展开） |
-| 等待回复 | 三点交替动画（无气泡、无文案） |
+| AI 消息 | 全宽 `MarkdownMessage`（`leading-7`）；可选 `ReasoningBlock`（历史默认折叠；流式中自动展开；「正在思考」文案扫光） |
+| 等待回复 | `ThreeDots` 三点动画（无气泡、无文案；颜色浅灰→灰→黑错开跳动） |
 | 加载骨架 | 聊天区 `MessageContentShell`（全局唯一蒙层，无底色，仅 `bg-muted` 脉冲条）；历史列表 `SessionListSkeleton`（10 条 `h-10`）；时序见 `lib/shellTiming.ts` |
 | 会话切换 | `mountedSessionCodes` Keep-Alive（LRU 上限 10）；`sessionMessagesCache` 命中则跳过 `GET /history/:code`；滚动沿用 DOM（刷新/重挂载贴底） |
 | 输入区 | `ChatComposer` 悬浮底部（`pt-2 pb-6`，与消息列 `py-6` 对齐）；支持 `prefillComposer` 回填编辑 |
@@ -153,8 +153,9 @@ pnpm add next-themes streamdown @streamdown/code @streamdown/mermaid @streamdown
 | 工具栏图标垂直居中 | `button:has(>svg)` + `div.relative:has(>button)` → `inline-flex` |
 | 工具按钮顺序 | 复制 → 下载 → 全屏（`code-block-copy-button { order: -1 }`） |
 | 图片可点预览 | `[data-streamdown="image"] { cursor: zoom-in }` |
-| Mermaid 兜底 | `prepareMermaidSource` 覆盖常见错法（全角冒号、`bar`+`series`、`barChart`、中文标题引号等）；仍失败则展示源码 |
-| 三点等待动画 | `.three-dot` keyframes（`index.css`） |
+| Mermaid 兜底 | `prepareMermaidSource` 高频修复；仍失败则 `MermaidErrorFallback` 展示源码 |
+| 三点等待动画 | 组件 `ThreeDots`；CSS `.three-dots` / `.three-dot` + `three-dot-wave`（`index.css`） |
+| 思考文案扫光 | 流式时「正在思考」`.thinking-shimmer`（从左到右明暗高光） |
 
 > Streamdown 原生：`table`/`mermaid` 有 fullscreen；`code`/`image` 无 fullscreen；图片预览为自研 `ImageLightbox`。
 
@@ -216,7 +217,9 @@ xx-chat-ai/
 │   │       │       ├── MessageContentShell.tsx + .styles.ts
 │   │       │       ├── MessageItem.tsx + .styles.ts
 │   │       │       ├── ReasoningBlock.tsx + .styles.ts
+│   │       │       ├── ThreeDots.tsx + .styles.ts   # 共用三点等待动画
 │   │       │       ├── MarkdownMessage.tsx + .styles.ts
+│   │       │       ├── MermaidErrorFallback.tsx + .styles.ts
 │   │       │       ├── ImageLightbox.tsx + .styles.ts
 │   │       │       ├── ProviderMenu.tsx + .styles.ts
 │   │       │       └── ModelMenu.tsx + .styles.ts
@@ -286,7 +289,7 @@ xx-chat-ai/
 
 事件：`meta` → `delta`* → `done` | `error`；客户端 AbortController 停止时服务端持久化**已生成的正文与推理**（多轮请求仍不回传推理）。
 
-**重复提问回放**（2026-07）：同 `sessionCode` + 相同 `query` + 相同 `provider`/`model` 命中缓存时，服务端回放已存 delta 序列（`pacedReplayStream`），不调用 LLM；流结束后写入/更新 `stream_replay_cache`。
+**重复提问回放**（2026-07）：同 `sessionCode` + 相同 `query` + 相同 `provider`/`model` 命中缓存时，服务端回放已存 delta 序列（`pacedReplayStream`），不调用 LLM；缓存含完整 `reasoning`/`text` delta，回放会再现思考块；流结束后写入/更新 `stream_replay_cache`。
 
 **delta 载荷**（2026-07 扩展）：
 
@@ -401,7 +404,8 @@ cp apps/server/config.local.example.json apps/server/config.local.json
 - [x] 历史落库 `reasoning`；回放默认折叠；多轮上下文不回传推理
 - [x] KaTeX 数学（`@streamdown/math`）
 - [x] Mermaid `barChart` 自动转 `xychart-beta`
-- [x] 用户消息编辑回填；等待回复三点动画卡片
+- [x] 用户消息编辑回填；`ThreeDots` 共用三点动画 +「正在思考」扫光
+- [x] Mermaid 高频清洗 + `MermaidErrorFallback` 失败降级；默认系统提示约束
 - [x] 界面文案：统一「对话」；「新建对话」
 
 ### Phase 5 — URL 会话路由（最小方案）✅

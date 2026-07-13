@@ -1,3 +1,6 @@
+/**
+ * URL sessionCode ↔ chatStore 单向同步，避免路由死循环。
+ */
 import { useEffect, useRef } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 
@@ -26,6 +29,7 @@ export function useSyncSessionRoute() {
       if (state.messages.length > 0) return
     }
 
+    // 流式中改 URL：先 abort 再加载目标会话
     if (state.isStreaming) {
       state._abort?.abort()
       useChatStore.setState({ isStreaming: false, _abort: undefined })

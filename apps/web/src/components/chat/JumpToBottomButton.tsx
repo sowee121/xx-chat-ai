@@ -1,3 +1,6 @@
+/**
+ * 回到底部按钮；流式中边框转圈提示。
+ */
 import { ArrowDown } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'

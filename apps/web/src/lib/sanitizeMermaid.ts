@@ -1,3 +1,6 @@
+/**
+ * Mermaid 源码清洗与多策略渲染尝试。
+ */
 function quoteLabel(label: string): string {
   return `"${label.replace(/"/g, '\\"')}"`
 }

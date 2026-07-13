@@ -1,3 +1,6 @@
+/**
+ * MessageContentShell 样式类名。
+ */
 export const styles = {
   shell:
     'pointer-events-none absolute inset-x-0 top-0 z-20 flex min-h-0 flex-col bg-background transition-opacity duration-[400ms] ease-in-out motion-reduce:transition-none bottom-[var(--chat-composer-pad,5.5rem)]',

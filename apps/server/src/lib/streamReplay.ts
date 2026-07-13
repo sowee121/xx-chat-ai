@@ -1,5 +1,9 @@
+/**
+ * SSE 防重回放：分片节奏回放与 delta 聚合。
+ */
 import type { StreamChunk } from '../types.js';
 
+/** 分片间隔，模拟真实 token 节奏 */
 const REPLAY_DELAY_MS = 20;
 
 function sleep(ms: number): Promise<void> {
@@ -35,6 +39,7 @@ export async function* pacedReplayStream(
   }
 }
 
+/** 聚合 delta 为完整正文与推理，供落库与完成态判断 */
 export function aggregateStreamChunks(deltas: StreamChunk[]): {
   fullText: string;
   fullReasoning: string;

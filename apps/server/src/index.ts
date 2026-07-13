@@ -1,3 +1,6 @@
+/**
+ * Fastify 服务入口：注册路由、健康检查与静态资源（若有）。
+ */
 import Fastify from 'fastify';
 import { listProviders } from './providers/config.js';
 import { chatRoutes } from './routes/chat.js';
@@ -8,6 +11,7 @@ const PORT = Number(process.env.XX_PORT ?? 3001);
 
 const app = Fastify({ logger: true });
 
+/** 健康检查，供本地与部署探活 */
 app.get('/api/health', async () => {
   return { status: 'ok', service: 'xx-chat-ai', ts: Date.now() };
 });
@@ -16,6 +20,7 @@ await app.register(chatRoutes);
 await app.register(historyRoutes);
 await app.register(providerRoutes);
 
+/** 启动时打印各 Provider 可用性，便于排查配置 */
 const providers = listProviders();
 for (const p of providers) {
   app.log.info(

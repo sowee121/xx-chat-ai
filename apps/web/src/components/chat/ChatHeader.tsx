@@ -1,3 +1,6 @@
+/**
+ * 聊天顶栏：侧栏触发、新建、模型与 Provider、主题。
+ */
 import { SquarePen } from 'lucide-react'
 
 import { useParams } from 'react-router-dom'

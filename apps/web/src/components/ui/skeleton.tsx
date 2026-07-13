@@ -1,3 +1,6 @@
+/**
+ * shadcn Skeleton 原语。
+ */
 import { cn } from "@/lib/utils"
 
 function Skeleton({ className, ...props }: React.ComponentProps<"div">) {

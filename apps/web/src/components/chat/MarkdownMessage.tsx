@@ -1,3 +1,6 @@
+/**
+ * Streamdown 渲染助手 Markdown（含 Mermaid / 数学等插件）。
+ */
 import { memo, useState, type MouseEvent } from 'react'
 import { Streamdown } from 'streamdown'
 import { code } from '@streamdown/code'

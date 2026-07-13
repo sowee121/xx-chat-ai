@@ -1,3 +1,6 @@
+/**
+ * shadcn AlertDialog 原语。
+ */
 import * as React from 'react'
 import { AlertDialog as AlertDialogPrimitive } from 'radix-ui'
 

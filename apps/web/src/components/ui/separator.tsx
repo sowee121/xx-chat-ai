@@ -1,3 +1,6 @@
+/**
+ * shadcn Separator 原语。
+ */
 "use client"
 
 import * as React from "react"

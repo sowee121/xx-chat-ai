@@ -1,3 +1,6 @@
+/**
+ * SSE 客户端：fetch-event-source 封装 meta/delta/done/error。
+ */
 import { fetchEventSource } from '@microsoft/fetch-event-source'
 import type { ChatMessage, Provider, Role, StreamDelta } from '@/lib/chat-types'
 
@@ -83,7 +86,8 @@ export async function streamChat(params: StreamParams, cb: StreamCallbacks): Pro
       },
     })
   } catch (err) {
-    if (isAbortError(err)) return // 正常结束（done 后 abort）或用户主动停止
+    // 正常结束（done 后 abort）或用户主动停止
+    if (isAbortError(err)) return
     cb.onError?.(err instanceof Error ? err.message : '网络错误')
   } finally {
     signal.removeEventListener('abort', forwardAbort)

@@ -1,3 +1,6 @@
+/**
+ * 共用三点等待动画（浅灰 → 灰 → 黑错开跳动）。
+ */
 import { cn } from '@/lib/utils'
 import { styles } from './ThreeDots.styles'
 

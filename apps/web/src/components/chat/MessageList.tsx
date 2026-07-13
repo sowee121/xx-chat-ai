@@ -1,3 +1,6 @@
+/**
+ * 消息列表：智能滚动、骨架触发与流式跟随。
+ */
 import { useEffect, useLayoutEffect, useRef, useState, type MutableRefObject } from 'react'
 
 import type { ChatMessage } from '@/lib/chat-types'

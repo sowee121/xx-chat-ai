@@ -1,3 +1,6 @@
+/**
+ * 单条消息：用户气泡操作 / 助手推理块与 Markdown。
+ */
 import { memo, useState } from 'react'
 import { Check, Copy, Pencil } from 'lucide-react'
 
@@ -60,6 +63,7 @@ export const MessageItem = memo(function MessageItem({ message, streaming = fals
     )
   }
 
+  // 尚无正文与推理时展示三点等待
   const isEmptyStreaming =
     streaming && message.content.length === 0 && !(message.reasoning?.length)
 

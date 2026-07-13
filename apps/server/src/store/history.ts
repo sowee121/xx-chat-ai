@@ -1,3 +1,6 @@
+/**
+ * 历史存储接口与内存实现（无 SQLite 时回退）。
+ */
 import { randomUUID } from 'node:crypto';
 import type { Role, StreamChunk } from '../types.js';
 

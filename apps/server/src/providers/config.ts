@@ -1,3 +1,6 @@
+/**
+ * Provider 可用性与默认项探测。
+ */
 import type { Provider } from '../types.js';
 import { getConfiguredDefaultProvider, getOpenaiCredentials } from '../config/local.js';
 

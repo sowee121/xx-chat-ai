@@ -1,3 +1,6 @@
+/**
+ * ImageLightbox 样式类名。
+ */
 export const styles = {
   overlay:
     'fixed inset-0 z-50 flex flex-col bg-black/80 backdrop-blur-sm animate-in fade-in',

@@ -1,3 +1,6 @@
+/**
+ * ChatComposer 样式类名。
+ */
 export const styles = {
   wrap: 'mx-auto w-full max-w-3xl',
   box: 'flex min-h-[50px] items-center gap-2 rounded-full border border-[color:var(--composer-border)] bg-background py-2 pr-2 pl-6 shadow-[var(--composer-shadow)] transition-[box-shadow,border-color] focus-within:shadow-[var(--composer-shadow-focus)]',

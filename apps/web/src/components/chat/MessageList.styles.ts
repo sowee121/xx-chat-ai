@@ -1,3 +1,6 @@
+/**
+ * MessageList 样式类名。
+ */
 export const styles = {
   wrap: 'absolute inset-0',
   wrapActive: 'z-10 visible',

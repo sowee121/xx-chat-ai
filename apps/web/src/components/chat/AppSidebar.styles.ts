@@ -1,3 +1,6 @@
+/**
+ * AppSidebar 样式类名。
+ */
 export const styles = {
   header: 'flex flex-col gap-2 px-4 pt-0 pb-2',
   brand: 'flex h-14 shrink-0 items-center gap-3',

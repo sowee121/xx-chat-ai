@@ -1,3 +1,6 @@
+/**
+ * 亮暗主题切换按钮。
+ */
 import { Moon, Sun } from 'lucide-react'
 import { useTheme } from 'next-themes'
 

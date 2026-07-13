@@ -1,3 +1,6 @@
+/**
+ * SQLite 历史存储：会话、消息、reasoning、流回放缓存。
+ */
 import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -58,6 +61,7 @@ export class SqliteHistoryStore implements HistoryStore {
     }
   }
 
+  /** 取会话末尾 user+assistant 对，供防重查询 */
   private getLastMessagePair(sessionCode: string): { user: StoredMessage; assistant: StoredMessage } | null {
     const rows = this.db
       .prepare(
@@ -113,6 +117,7 @@ export class SqliteHistoryStore implements HistoryStore {
     };
   }
 
+  /** 已有 sessionCode 则复用；否则新建（含客户端传入但尚不存在的 code） */
   ensureSession(sessionCode: string | undefined, title: string): Session {
     if (sessionCode) {
       const existing = this.getSession(sessionCode);
@@ -134,6 +139,7 @@ export class SqliteHistoryStore implements HistoryStore {
     return session;
   }
 
+  /** 追加消息并刷新会话 updated_at；返回 message id */
   appendMessage(sessionCode: string, role: Role, content: string, reasoning?: string): number {
     const now = Date.now();
     const result = this.db.transaction(() => {
@@ -150,6 +156,7 @@ export class SqliteHistoryStore implements HistoryStore {
     return Number(result.lastInsertRowid);
   }
 
+  /** 末轮 user 文案与 provider/model 均匹配时返回缓存 delta（含 reasoning） */
   findReplayDeltas(
     sessionCode: string,
     query: string,
@@ -179,6 +186,7 @@ export class SqliteHistoryStore implements HistoryStore {
     }
   }
 
+  /** 按 assistant message_id 覆盖写入完整流缓存 */
   saveStreamCache(
     messageId: number,
     provider: string,

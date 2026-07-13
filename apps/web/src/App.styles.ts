@@ -1,3 +1,6 @@
+/**
+ * App 根布局样式类名。
+ */
 export const styles = {
   /** 窄于此时出现横向滚动，避免顶栏/输入区被压乱（兼容 320 逻辑宽） */
   provider: 'h-svh min-w-[320px]',

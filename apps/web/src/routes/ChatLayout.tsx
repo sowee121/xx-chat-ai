@@ -1,3 +1,6 @@
+/**
+ * 聊天主布局：侧栏、顶栏、消息区、输入区与会话面板 Keep-Alive。
+ */
 import { useEffect, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 
@@ -28,6 +31,7 @@ export function ChatLayout() {
   useEffect(() => {
     const el = composerRef.current
     if (!el) return
+    // 输入区高度写入 CSS 变量，供消息列预留底部内边距
     const sync = () => {
       document.documentElement.style.setProperty('--chat-composer-pad', `${el.offsetHeight}px`)
     }

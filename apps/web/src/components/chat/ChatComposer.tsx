@@ -1,3 +1,6 @@
+/**
+ * 底部输入区：发送 / 停止与回填编辑。
+ */
 import { useEffect, useRef, useState } from 'react'
 import { ArrowUp } from 'lucide-react'
 

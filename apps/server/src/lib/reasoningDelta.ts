@@ -1,3 +1,7 @@
+/**
+ * 从供应商 delta 多字段提取推理文本。
+ */
+
 /** 网关/代理可能把推理放在 delta 的多个字段名里 */
 const REASONING_FIELD_KEYS = [
   'reasoning_content',

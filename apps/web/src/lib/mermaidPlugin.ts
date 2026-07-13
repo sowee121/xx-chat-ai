@@ -1,3 +1,6 @@
+/**
+ * Streamdown Mermaid 插件包装（清洗 + 失败降级）。
+ */
 import { createMermaidPlugin, type DiagramPlugin } from '@streamdown/mermaid'
 
 import { buildMermaidRenderAttempts } from './sanitizeMermaid'

@@ -1,3 +1,6 @@
+/**
+ * 流式解析 content 内思考标签，拆成 reasoning / text。
+ */
 export type StreamChunkType = 'reasoning' | 'text';
 
 export interface StreamChunk {

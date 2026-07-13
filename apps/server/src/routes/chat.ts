@@ -1,3 +1,6 @@
+/**
+ * 聊天 SSE 路由：流式推送、落库、防重 delta 回放。
+ */
 import type { FastifyInstance } from 'fastify';
 import { resolveRequestModel } from '../lib/resolveModel.js';
 import { aggregateStreamChunks, pacedReplayStream } from '../lib/streamReplay.js';
@@ -7,6 +10,7 @@ import { getProvider } from '../providers/index.js';
 import { historyStore } from '../store/sqlite.js';
 import type { ChatRequestBody, StreamChunk } from '../types.js';
 
+/** 请求体 JSON Schema（Fastify 校验） */
 const bodySchema = {
   type: 'object',
   required: ['query'],
@@ -33,12 +37,14 @@ const bodySchema = {
 /** 仅有推理、无正文时落库占位，避免刷新后 assistant 行丢失（BUG-01） */
 const REASONING_ONLY_PLACEHOLDER = '（本轮无正文输出）';
 
+/** 决定 assistant 落库正文：有 text 用 text；仅推理则占位；皆无则不落库 */
 function resolveAssistantContent(textToSave: string, hadReasoning: boolean): string | null {
   if (textToSave) return textToSave;
   if (hadReasoning) return REASONING_ONLY_PLACEHOLDER;
   return null;
 }
 
+/** 有可保存内容时写入 assistant（含可选 reasoning 列） */
 function persistAssistantIfAny(
   sessionCode: string,
   fullText: string,
@@ -51,6 +57,7 @@ function persistAssistantIfAny(
   return historyStore.appendMessage(sessionCode, 'assistant', contentToSave, reasoningToSave);
 }
 
+/** 仅完整结束时写入防重缓存，中途 abort 不缓存半截流 */
 function saveReplayCacheIfComplete(
   messageId: number | null,
   provider: string,
@@ -72,6 +79,7 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
       const model = resolveRequestModel(provider, body.model);
 
       const session = historyStore.ensureSession(body.sessionCode, body.query);
+      // 同会话同文案同模型命中则走回放，不调大模型
       const replayDeltas = historyStore.findReplayDeltas(
         session.sessionCode,
         body.query,
@@ -83,6 +91,7 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
 
       const ac = new AbortController();
 
+      // 接管原始响应以手写 SSE；客户端断开时 abort provider
       reply.hijack();
       const raw = reply.raw;
       raw.on('close', () => {
@@ -152,6 +161,7 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
         }
       } catch (err) {
         request.log.error(err);
+        // 报错路径也落库已生成的 partial，与 abort 行为对齐（BUG-03）
         const { fullText, fullReasoning, hadReasoning } = aggregateStreamChunks(streamedDeltas);
         persistAssistantIfAny(session.sessionCode, fullText, fullReasoning, hadReasoning);
         send('error', { message: err instanceof Error ? err.message : 'stream error' });

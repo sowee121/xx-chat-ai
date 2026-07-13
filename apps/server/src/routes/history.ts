@@ -1,3 +1,6 @@
+/**
+ * 历史对话 CRUD：列表、详情、删除与批量删除。
+ */
 import type { FastifyInstance } from 'fastify';
 import { historyStore } from '../store/sqlite.js';
 

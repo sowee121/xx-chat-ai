@@ -1,3 +1,6 @@
+/**
+ * Vite 前端构建与 /api 开发代理配置。
+ */
 import path from 'node:path'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'

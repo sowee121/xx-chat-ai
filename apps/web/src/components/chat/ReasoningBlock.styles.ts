@@ -1,4 +1,6 @@
-/** 顶栏文案 + 思考正文卡片 */
+/**
+ * ReasoningBlock 样式类名（顶栏文案 + 思考正文卡片）。
+ */
 export const styles = {
   wrap: '',
   header:

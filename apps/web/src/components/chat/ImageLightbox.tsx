@@ -1,3 +1,6 @@
+/**
+ * 图片全屏预览：缩放、拖拽、键盘与点背景关闭。
+ */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { RotateCcw, X, ZoomIn, ZoomOut } from 'lucide-react'

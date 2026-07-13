@@ -1,3 +1,6 @@
+/**
+ * Provider / 模型列表 API。
+ */
 import type { FastifyInstance } from 'fastify';
 import {
   getDefaultProvider,

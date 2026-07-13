@@ -1,3 +1,6 @@
+/**
+ * 模型下拉：拉取 OpenAI 兼容 /v1/models 并支持搜索。
+ */
 import { useMemo, useState } from 'react'
 import { ChevronDown, X } from 'lucide-react'
 
