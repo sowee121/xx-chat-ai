@@ -229,6 +229,7 @@ xx-chat-ai/
 │   │       │   ├── chatContentShell.ts   # 全局聊天骨架蒙层
 │   │       │   ├── shellTiming.ts        # 骨架最短展示/延时/淡出常量
 │   │       │   ├── waitForColumnReady.ts # 图片/Mermaid 布局稳定检测
+│   │       │   ├── streamIdle.ts         # SSE 空闲超时常量
 │   │       │   ├── mermaidPlugin.ts | sanitizeMermaid.ts | mathPlugin.ts
 │   │       ├── hooks/
 │   │       │   ├── use-mobile.ts         # 窄屏断点（matchMedia + useSyncExternalStore）
@@ -250,6 +251,7 @@ xx-chat-ai/
 │           │   ├── thinkingParser.ts   # 流式思考标签 → reasoning/text
 │           │   ├── reasoningDelta.ts   # delta 多字段推理归一化
 │           │   ├── streamReplay.ts     # SSE delta 聚合与分片回放
+│           │   ├── streamIdle.ts       # 流式空闲超时（无产出则中止）
 │           │   └── resolveModel.ts
 │           ├── prompts/
 │           │   └── systemPrompt.ts     # OpenAI 默认系统提示（Markdown/Mermaid 兼容约定）
@@ -645,6 +647,8 @@ pnpm build   # web + server
 | 骨架屏一闪而过 | `shellTiming` 最短展示 + 延时 + 400ms 淡出 |
 | 侧栏标题行刷新抖动 | `groupHeader` 固定 `h-10` + `batchToggleSlot` 占位 |
 | 宽窄屏临界侧栏闪烁 | `useIsMobile` 改 `matchMedia` + `useSyncExternalStore`，与 CSS `md` 对齐；进出窄屏关闭 `openMobile` |
+| 免费模型卡住三点动画 | SSE / provider **空闲超时** 60s（前后端，Mock 除外），提示更换模型或重试 |
+| 新克隆 `pnpm install` 忽略构建 | `onlyBuiltDependencies` 迁出 `package.json#pnpm` → `pnpm-workspace.yaml`（兼 `allowBuilds`，适配 pnpm 11） |
 
 **待修复 Bug 排期**：见 [`docs/bugs-plan.md`](./bugs-plan.md)（BUG-01～03、07 已修复，其余待排期）。
 

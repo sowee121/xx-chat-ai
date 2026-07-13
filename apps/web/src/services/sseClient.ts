@@ -2,7 +2,8 @@
  * SSE 客户端：fetch-event-source 封装 meta/delta/done/error。
  */
 import { fetchEventSource } from '@microsoft/fetch-event-source'
-import type { ChatMessage, Provider, Role, StreamDelta } from '@/lib/chat-types'
+import type { Provider, Role, StreamDelta } from '@/lib/chat-types'
+import { STREAM_IDLE_TIMEOUT_MESSAGE, STREAM_IDLE_TIMEOUT_MS } from '@/lib/streamIdle'
 
 export interface StreamMeta {
   sessionCode: string
@@ -36,14 +37,38 @@ function isAbortError(err: unknown): boolean {
  * 通过 @microsoft/fetch-event-source 建立 SSE 流。
  * 事件协议：meta / delta / done / error（与后端 routes/chat.ts 对应）。
  * 收到 done/error 后主动 abort，避免 fetch-event-source 断线自动重连。
+ * 空闲超时：OpenAI 等真实 provider 超过 STREAM_IDLE_TIMEOUT_MS 无 SSE 事件则中止；Mock 不启用。
  */
 export async function streamChat(params: StreamParams, cb: StreamCallbacks): Promise<void> {
   const { signal, ...body } = params
+  const idleEnabled = body.provider !== 'mock'
 
   const ctrl = new AbortController()
   const forwardAbort = () => ctrl.abort()
   if (signal.aborted) ctrl.abort()
   else signal.addEventListener('abort', forwardAbort, { once: true })
+
+  let idleTimedOut = false
+  let idleTimer: ReturnType<typeof setTimeout> | null = null
+
+  const clearIdle = () => {
+    if (idleTimer) {
+      clearTimeout(idleTimer)
+      idleTimer = null
+    }
+  }
+
+  const bumpIdle = () => {
+    if (!idleEnabled) return
+    clearIdle()
+    idleTimer = setTimeout(() => {
+      idleTimedOut = true
+      cb.onError?.(STREAM_IDLE_TIMEOUT_MESSAGE)
+      ctrl.abort()
+    }, STREAM_IDLE_TIMEOUT_MS)
+  }
+
+  bumpIdle()
 
   try {
     await fetchEventSource('/api/chat', {
@@ -53,6 +78,7 @@ export async function streamChat(params: StreamParams, cb: StreamCallbacks): Pro
       signal: ctrl.signal,
       openWhenHidden: true,
       async onopen(res) {
+        bumpIdle()
         const ct = res.headers.get('content-type') ?? ''
         if (res.ok && ct.includes('text/event-stream')) return
         const text = await res.text().catch(() => '')
@@ -60,6 +86,7 @@ export async function streamChat(params: StreamParams, cb: StreamCallbacks): Pro
       },
       onmessage(ev) {
         if (!ev.event || !ev.data) return
+        bumpIdle()
         switch (ev.event) {
           case 'meta':
             cb.onMeta?.(JSON.parse(ev.data))
@@ -71,10 +98,12 @@ export async function streamChat(params: StreamParams, cb: StreamCallbacks): Pro
             break
           }
           case 'done':
+            clearIdle()
             cb.onDone?.(JSON.parse(ev.data))
             ctrl.abort()
             break
           case 'error':
+            clearIdle()
             cb.onError?.(JSON.parse(ev.data).message ?? '生成出错')
             ctrl.abort()
             break
@@ -86,10 +115,13 @@ export async function streamChat(params: StreamParams, cb: StreamCallbacks): Pro
       },
     })
   } catch (err) {
+    // 空闲超时已通过 onError 通知
+    if (idleTimedOut) return
     // 正常结束（done 后 abort）或用户主动停止
     if (isAbortError(err)) return
     cb.onError?.(err instanceof Error ? err.message : '网络错误')
   } finally {
+    clearIdle()
     signal.removeEventListener('abort', forwardAbort)
   }
 }

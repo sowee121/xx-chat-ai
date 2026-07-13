@@ -3,6 +3,7 @@
  */
 import type { FastifyInstance } from 'fastify';
 import { resolveRequestModel } from '../lib/resolveModel.js';
+import { withStreamIdleTimeout } from '../lib/streamIdle.js';
 import { aggregateStreamChunks, pacedReplayStream } from '../lib/streamReplay.js';
 import { stripThinkingTags } from '../lib/thinkingParser.js';
 import { getDefaultProvider } from '../providers/config.js';
@@ -115,7 +116,11 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
 
       try {
         if (replayDeltas) {
-          for await (const delta of pacedReplayStream(replayDeltas, ac.signal)) {
+          // 回放仍走空闲超时，避免卡死；Mock 实时流不套超时
+          for await (const delta of withStreamIdleTimeout(
+            pacedReplayStream(replayDeltas, ac.signal),
+            { signal: ac.signal },
+          )) {
             if (ac.signal.aborted) break;
             streamedDeltas.push(delta);
             send('delta', delta);
@@ -128,7 +133,10 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
             model: body.model,
           });
 
-          for await (const delta of stream) {
+          const deltaSource =
+            provider === 'mock' ? stream : withStreamIdleTimeout(stream, { signal: ac.signal });
+
+          for await (const delta of deltaSource) {
             if (ac.signal.aborted) break;
             streamedDeltas.push(delta);
             send('delta', delta);
@@ -161,9 +169,10 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
         }
       } catch (err) {
         request.log.error(err);
-        // 报错路径也落库已生成的 partial，与 abort 行为对齐（BUG-03）
+        // 报错 / 空闲超时路径也落库已生成的 partial，与 abort 行为对齐（BUG-03）
         const { fullText, fullReasoning, hadReasoning } = aggregateStreamChunks(streamedDeltas);
         persistAssistantIfAny(session.sessionCode, fullText, fullReasoning, hadReasoning);
+        ac.abort();
         send('error', { message: err instanceof Error ? err.message : 'stream error' });
       } finally {
         if (!raw.writableEnded) raw.end();
