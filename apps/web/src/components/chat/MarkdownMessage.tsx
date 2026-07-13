@@ -7,6 +7,7 @@ import { mermaid } from '@/lib/mermaidPlugin'
 import { math } from '@/lib/mathPlugin'
 
 import { ImageLightbox } from './ImageLightbox'
+import { MermaidErrorFallback } from './MermaidErrorFallback'
 import { styles } from './MarkdownMessage.styles'
 
 interface MarkdownMessageProps {
@@ -30,7 +31,12 @@ export const MarkdownMessage = memo(function MarkdownMessage({
 
   return (
     <div className={styles.root} onClick={handleClick}>
-      <Streamdown plugins={{ code, mermaid, math, cjk }} animated isAnimating={animating}>
+      <Streamdown
+        plugins={{ code, mermaid, math, cjk }}
+        mermaid={{ errorComponent: MermaidErrorFallback }}
+        animated
+        isAnimating={animating}
+      >
         {content}
       </Streamdown>
       {preview && (

@@ -2,13 +2,9 @@ import OpenAI from 'openai';
 import { getOpenaiCredentials } from '../config/local.js';
 import { extractReasoningFromDelta } from '../lib/reasoningDelta.js';
 import { ThinkingStreamParser } from '../lib/thinkingParser.js';
+import { DEFAULT_SYSTEM_PROMPT } from '../prompts/systemPrompt.js';
 import type { ChatStream, StreamOptions } from '../types.js';
 import { isOpenaiConfigured } from './config.js';
-
-const DEFAULT_SYSTEM_PROMPT =
-  '你是 XX Chat AI 的助手。回答使用简洁的中文 Markdown；' +
-  '涉及代码时用带语言标注的代码块，涉及对比时可用表格，涉及流程时可用 Mermaid 图（graph、sequenceDiagram 等）；' +
-  '数值对比图请用 xychart-beta，不要使用 barChart。';
 
 let client: OpenAI | null = null;
 let clientKey = '';

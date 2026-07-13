@@ -5,6 +5,8 @@ export interface StoredMessage {
   id?: number;
   role: Role;
   content: string;
+  /** 思考过程；仅 assistant 可选；展示用，不回传上游 */
+  reasoning?: string;
   ts: number;
 }
 
@@ -32,7 +34,7 @@ export interface HistoryStore {
   getSession(sessionCode: string): Session | undefined;
   /** 确保会话存在（不存在则以 title 创建），返回会话。 */
   ensureSession(sessionCode: string | undefined, title: string): Session;
-  appendMessage(sessionCode: string, role: Role, content: string): number;
+  appendMessage(sessionCode: string, role: Role, content: string, reasoning?: string): number;
   /** 上一条 user+assistant 回合与 query/model 匹配时，返回可回放的流式 delta */
   findReplayDeltas(
     sessionCode: string,
@@ -105,11 +107,13 @@ class InMemoryHistoryStore implements HistoryStore {
     return session;
   }
 
-  appendMessage(sessionCode: string, role: Role, content: string): number {
+  appendMessage(sessionCode: string, role: Role, content: string, reasoning?: string): number {
     const session = this.sessions.get(sessionCode);
     if (!session) return 0;
     const id = this.nextMessageId++;
-    session.messages.push({ id, role, content, ts: Date.now() });
+    const msg: StoredMessage = { id, role, content, ts: Date.now() };
+    if (reasoning) msg.reasoning = reasoning;
+    session.messages.push(msg);
     session.updatedAt = Date.now();
     return id;
   }

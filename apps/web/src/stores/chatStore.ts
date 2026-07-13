@@ -52,6 +52,7 @@ function toChatMessages(stored: StoredMessage[]): ChatMessage[] {
     id: m.id != null ? `msg-${m.id}` : uid(),
     role: m.role,
     content: m.content,
+    ...(m.reasoning ? { reasoning: m.reasoning } : {}),
   }))
 }
 
@@ -61,7 +62,13 @@ function snapshotMessages(messages: ChatMessage[]): ChatMessage[] {
 
 function messagesEqual(a: ChatMessage[], b: ChatMessage[]): boolean {
   if (a.length !== b.length) return false
-  return a.every((m, i) => m.id === b[i].id && m.role === b[i].role && m.content === b[i].content)
+  return a.every(
+    (m, i) =>
+      m.id === b[i].id &&
+      m.role === b[i].role &&
+      m.content === b[i].content &&
+      (m.reasoning ?? '') === (b[i].reasoning ?? ''),
+  )
 }
 
 function syncSessionCache(sessionCode: string, messages: ChatMessage[]) {
@@ -365,6 +372,7 @@ export const useChatStore = create<ChatState>()(
         const state = get()
         if (!trimmed || state.isStreaming) return
 
+        // 多轮上下文只带正文，不回传 reasoning
         const history = state.messages
           .filter((m) => m.role !== 'assistant' || m.content.trim().length > 0)
           .map((m) => ({ role: m.role, content: m.content }))

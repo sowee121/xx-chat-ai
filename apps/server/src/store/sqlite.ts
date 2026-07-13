@@ -38,6 +38,7 @@ export class SqliteHistoryStore implements HistoryStore {
         session_code TEXT    NOT NULL REFERENCES sessions(session_code) ON DELETE CASCADE,
         role         TEXT    NOT NULL,
         content      TEXT    NOT NULL,
+        reasoning    TEXT,
         ts           INTEGER NOT NULL
       );
       CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_code, id);
@@ -49,6 +50,12 @@ export class SqliteHistoryStore implements HistoryStore {
         deltas_json  TEXT    NOT NULL
       );
     `);
+
+    // 兼容已有库：旧表无 reasoning 列时补上
+    const cols = this.db.prepare(`PRAGMA table_info(messages)`).all() as { name: string }[];
+    if (!cols.some((c) => c.name === 'reasoning')) {
+      this.db.exec(`ALTER TABLE messages ADD COLUMN reasoning TEXT`);
+    }
   }
 
   private getLastMessagePair(sessionCode: string): { user: StoredMessage; assistant: StoredMessage } | null {
@@ -93,11 +100,17 @@ export class SqliteHistoryStore implements HistoryStore {
 
     const messages = this.db
       .prepare(
-        `SELECT id, role, content, ts FROM messages WHERE session_code = ? ORDER BY id ASC`,
+        `SELECT id, role, content, reasoning, ts FROM messages WHERE session_code = ? ORDER BY id ASC`,
       )
       .all(sessionCode) as StoredMessage[];
 
-    return { ...row, messages };
+    return {
+      ...row,
+      messages: messages.map((m) => ({
+        ...m,
+        reasoning: m.reasoning || undefined,
+      })),
+    };
   }
 
   ensureSession(sessionCode: string | undefined, title: string): Session {
@@ -121,12 +134,14 @@ export class SqliteHistoryStore implements HistoryStore {
     return session;
   }
 
-  appendMessage(sessionCode: string, role: Role, content: string): number {
+  appendMessage(sessionCode: string, role: Role, content: string, reasoning?: string): number {
     const now = Date.now();
     const result = this.db.transaction(() => {
       const insert = this.db
-        .prepare(`INSERT INTO messages (session_code, role, content, ts) VALUES (?, ?, ?, ?)`)
-        .run(sessionCode, role, content, now);
+        .prepare(
+          `INSERT INTO messages (session_code, role, content, reasoning, ts) VALUES (?, ?, ?, ?, ?)`,
+        )
+        .run(sessionCode, role, content, reasoning || null, now);
       this.db
         .prepare(`UPDATE sessions SET updated_at = ? WHERE session_code = ?`)
         .run(now, sessionCode);

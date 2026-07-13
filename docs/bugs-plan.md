@@ -48,7 +48,7 @@ const textToSave = stripThinkingTags(fullText);
 if (textToSave) historyStore.appendMessage(session.sessionCode, 'assistant', textToSave);
 ```
 
-推理走 `reasoning` 通道，**从不写入 SQLite**（与产品设计「历史仅存正文」一致），但未处理「正文为空」的边界。
+推理走 `reasoning` 通道；早期设计不落库。**现已落库** `messages.reasoning`（历史可还原思考块）；BUG-01 的占位符策略仍保留（仅有推理无正文时）。
 
 **涉及文件**
 

@@ -1,17 +1,12 @@
 import { createMermaidPlugin, type DiagramPlugin } from '@streamdown/mermaid'
 
-import {
-  convertInvalidBarChart,
-  fixXychartBetaSyntax,
-  normalizeMermaidSource,
-  sanitizeMermaidBlock,
-  sanitizeMermaidBlockAggressive,
-} from './sanitizeMermaid'
+import { buildMermaidRenderAttempts } from './sanitizeMermaid'
 
 const base = createMermaidPlugin()
 
 /**
- * 先原样渲染；仅失败时再尝试修复，避免破坏各模型已正确的 Mermaid 语法。
+ * 优先用 prepareMermaidSource 覆盖中文模型常见错法；
+ * 仍失败再尝试其它变体；全部失败则抛出让 UI 降级展示源码。
  */
 export const mermaid: DiagramPlugin = {
   ...base,
@@ -21,16 +16,7 @@ export const mermaid: DiagramPlugin = {
     return {
       initialize: (cfg) => instance.initialize(cfg),
       async render(id, source) {
-        const normalized = normalizeMermaidSource(source)
-        const barChart = convertInvalidBarChart(normalized)
-        const xychartFixed = fixXychartBetaSyntax(normalized)
-        const attempts = [
-          normalized,
-          xychartFixed,
-          ...(barChart ? [barChart, fixXychartBetaSyntax(barChart)] : []),
-          sanitizeMermaidBlock(normalized),
-          sanitizeMermaidBlockAggressive(normalized),
-        ]
+        const attempts = buildMermaidRenderAttempts(source)
 
         let lastError: unknown
         for (let i = 0; i < attempts.length; i++) {

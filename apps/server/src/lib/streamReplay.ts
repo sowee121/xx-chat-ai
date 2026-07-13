@@ -37,13 +37,18 @@ export async function* pacedReplayStream(
 
 export function aggregateStreamChunks(deltas: StreamChunk[]): {
   fullText: string;
+  fullReasoning: string;
   hadReasoning: boolean;
 } {
   let fullText = '';
-  let hadReasoning = false;
+  let fullReasoning = '';
   for (const delta of deltas) {
-    if (delta.type === 'reasoning') hadReasoning = true;
+    if (delta.type === 'reasoning') fullReasoning += delta.content;
     if (delta.type === 'text') fullText += delta.content;
   }
-  return { fullText, hadReasoning };
+  return {
+    fullText,
+    fullReasoning,
+    hadReasoning: fullReasoning.length > 0,
+  };
 }

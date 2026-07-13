@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
+import { ThreeDots } from './ThreeDots'
 import { styles } from './ReasoningBlock.styles'
 
 interface ReasoningBlockProps {
@@ -35,7 +36,7 @@ export function ReasoningBlock({ content, streaming = false }: ReasoningBlockPro
   const displayContent = content.trimStart()
 
   const label = streaming
-    ? '正在思考…'
+    ? '正在思考'
     : elapsedSec !== null
       ? `已思考（用时 ${elapsedSec} 秒）`
       : '已思考'
@@ -51,7 +52,10 @@ export function ReasoningBlock({ content, streaming = false }: ReasoningBlockPro
         }}
         aria-expanded={open}
       >
-        <span className={styles.headerText}>{label}</span>
+        <span className={styles.headerText}>
+          {streaming ? <ThreeDots /> : null}
+          <span className={streaming ? styles.labelShimmer : undefined}>{label}</span>
+        </span>
         <ChevronDown
           className={cn(styles.chevron, !open && styles.chevronCollapsed)}
           aria-hidden

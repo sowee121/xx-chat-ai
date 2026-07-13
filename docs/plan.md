@@ -119,7 +119,7 @@ pnpm add next-themes streamdown @streamdown/code @streamdown/mermaid @streamdown
 │ (hover 删除 / 批量管理) │ Keep-Alive 多会话面板（隐藏不卸载）        │
 │ 列表加载：10 条 h-10 骨架 │ 空状态：居中「嘻嘻，想问点什么？」+ 快捷标签 │
 │                 │   有对话：用户右对齐气泡 / AI 全宽 Streamdown    │
-│                 │          推理中：ReasoningBlock + 等待卡片(三点) │
+│                 │          推理中：ReasoningBlock + 等待三点动画 │
 │                 │                                              │
 │                 │   ╭──────────────────────────────────────╮   │
 │                 │   │  嘻嘻，想问点什么？              ( ↑ )    │   │
@@ -134,8 +134,8 @@ pnpm add next-themes streamdown @streamdown/code @streamdown/mermaid @streamdown
 | 顶栏 | `ChatHeader`：左 `SidebarTrigger` + 新建对话；右 `ModelMenu` + `ProviderMenu` + `ModeToggle`（左右 `gap-2`） |
 | 空状态 | `HomeView`：居中标题 + `ChatComposer` + 快捷标签 |
 | 用户消息 | 右对齐 `bg-muted` 圆角气泡（`h-12` 单行等价高度）；hover 显示编辑（回填输入框）+ 复制 |
-| AI 消息 | 全宽 `MarkdownMessage`（`leading-7`）；可选 `ReasoningBlock`（顶栏文案 + 左侧竖线正文） |
-| 等待回复 | 与用户气泡同高的 `bg-muted` 卡片，内三点交替动画（无文案） |
+| AI 消息 | 全宽 `MarkdownMessage`（`leading-7`）；可选 `ReasoningBlock`（历史默认折叠；流式中自动展开） |
+| 等待回复 | 三点交替动画（无气泡、无文案） |
 | 加载骨架 | 聊天区 `MessageContentShell`（全局唯一蒙层，无底色，仅 `bg-muted` 脉冲条）；历史列表 `SessionListSkeleton`（10 条 `h-10`）；时序见 `lib/shellTiming.ts` |
 | 会话切换 | `mountedSessionCodes` Keep-Alive（LRU 上限 10）；`sessionMessagesCache` 命中则跳过 `GET /history/:code`；滚动沿用 DOM（刷新/重挂载贴底） |
 | 输入区 | `ChatComposer` 悬浮底部（`pt-2 pb-6`，与消息列 `py-6` 对齐）；支持 `prefillComposer` 回填编辑 |
@@ -153,8 +153,8 @@ pnpm add next-themes streamdown @streamdown/code @streamdown/mermaid @streamdown
 | 工具栏图标垂直居中 | `button:has(>svg)` + `div.relative:has(>button)` → `inline-flex` |
 | 工具按钮顺序 | 复制 → 下载 → 全屏（`code-block-copy-button { order: -1 }`） |
 | 图片可点预览 | `[data-streamdown="image"] { cursor: zoom-in }` |
-| Mermaid 兜底 | `mermaidPlugin` 先原样渲染，失败再 `sanitizeMermaid`；`barChart` 伪语法转 `xychart-beta` |
-| 三点等待动画 | `.generating-dot` keyframes（`index.css`） |
+| Mermaid 兜底 | `prepareMermaidSource` 覆盖常见错法（全角冒号、`bar`+`series`、`barChart`、中文标题引号等）；仍失败则展示源码 |
+| 三点等待动画 | `.three-dot` keyframes（`index.css`） |
 
 > Streamdown 原生：`table`/`mermaid` 有 fullscreen；`code`/`image` 无 fullscreen；图片预览为自研 `ImageLightbox`。
 
@@ -248,6 +248,8 @@ xx-chat-ai/
 │           │   ├── reasoningDelta.ts   # delta 多字段推理归一化
 │           │   ├── streamReplay.ts     # SSE delta 聚合与分片回放
 │           │   └── resolveModel.ts
+│           ├── prompts/
+│           │   └── systemPrompt.ts     # OpenAI 默认系统提示（Markdown/Mermaid 兼容约定）
 │           ├── providers/
 │           │   ├── mock.ts             # 关键词意图 mock
 │           │   ├── openai.ts           # SDK 流式 + models.list
@@ -282,7 +284,7 @@ xx-chat-ai/
 }
 ```
 
-事件：`meta` → `delta`* → `done` | `error`；客户端 AbortController 停止时服务端持久化**已生成的正文**（不含推理块）。
+事件：`meta` → `delta`* → `done` | `error`；客户端 AbortController 停止时服务端持久化**已生成的正文与推理**（多轮请求仍不回传推理）。
 
 **重复提问回放**（2026-07）：同 `sessionCode` + 相同 `query` + 相同 `provider`/`model` 命中缓存时，服务端回放已存 delta 序列（`pacedReplayStream`），不调用 LLM；流结束后写入/更新 `stream_replay_cache`。
 
@@ -292,7 +294,7 @@ xx-chat-ai/
 { type: 'reasoning' | 'text', content: string }
 ```
 
-- `reasoning`：思考过程，仅当前轮展示，**不落库、不回传**上游 API。
+- `reasoning`：思考过程；流式展示 + 落库 `messages.reasoning`；历史默认折叠；**不回传**上游 API。
 - `text`：最终回答，累加写入 SQLite `messages.content`。
 
 **Provider 推理归一化**（`openai.ts` + `lib/`）：
@@ -301,7 +303,7 @@ xx-chat-ai/
 2. 否则对 `content` 做流式标签解析（`think`、`redacted_thinking`、`reasoning`、`cot` 等）
 3. 普通模型无推理字段时全部当 `text`
 
-系统提示要求数值图用 `xychart-beta`，禁止 `barChart`。
+系统提示（`apps/server/src/prompts/systemPrompt.ts`）：代码块/GFM 表格/Mermaid 硬性约定 + 三类简例；自定义 `systemPrompt` 时建议保留同类约束。
 
 ### 历史
 
@@ -310,7 +312,7 @@ xx-chat-ai/
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | GET | `/api/history` | 对话列表（按 `updatedAt` 降序） |
-| GET | `/api/history/:sessionCode` | 对话详情 + messages（仅正文） |
+| GET | `/api/history/:sessionCode` | 对话详情 + messages（正文 + 可选 `reasoning`） |
 | DELETE | `/api/history/:sessionCode` | 删除对话（级联消息） |
 | POST | `/api/history/batch-delete` | 批量删除，`{ sessionCodes: string[] }` |
 
@@ -396,7 +398,7 @@ cp apps/server/config.local.example.json apps/server/config.local.json
 
 - [x] 推理块分离：SSE `reasoning` / `text` + `ReasoningBlock` 折叠 UI
 - [x] `thinkingParser` + `reasoningDelta` 多厂商兼容（字段优先 + 标签兜底）
-- [x] 历史仅存正文；多轮上下文不回传推理
+- [x] 历史落库 `reasoning`；回放默认折叠；多轮上下文不回传推理
 - [x] KaTeX 数学（`@streamdown/math`）
 - [x] Mermaid `barChart` 自动转 `xychart-beta`
 - [x] 用户消息编辑回填；等待回复三点动画卡片
@@ -628,6 +630,7 @@ pnpm build   # web + server
 | 工具栏图标不齐/顺序乱 | `index.css` flex 居中 + `order:-1` 统一复制优先 |
 | 回到底部按钮闪烁 | `jumpingRef` 防止平滑滚动中间帧重新显示 |
 | Mermaid `barChart` 报错 | `convertInvalidBarChart` → `xychart-beta` |
+| Mermaid 语法不兼容 | `prepareMermaidSource` 高频修复 + 失败降级展示源码 |
 | edgefn R1 无 `reasoning_content` | `content` 内 `redacted_thinking` 标签流式解析 |
 | 仅有推理无正文时不落库 | 落库占位符 `（本轮无正文输出）`（`bugs-plan` BUG-01） |
 | 空 assistant 污染多轮上下文 | `chatStore` 过滤无正文 assistant（BUG-02） |

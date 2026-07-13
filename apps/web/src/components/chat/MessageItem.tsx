@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type { ChatMessage } from '@/lib/chat-types'
 import { useChatStore } from '@/stores/chatStore'
+import { ThreeDots } from './ThreeDots'
 import { ReasoningBlock } from './ReasoningBlock'
 import { MarkdownMessage } from './MarkdownMessage'
 import { styles } from './MessageItem.styles'
@@ -68,12 +69,8 @@ export const MessageItem = memo(function MessageItem({ message, streaming = fals
         <ReasoningBlock content={message.reasoning} streaming={streaming && !message.content} />
       ) : null}
       {isEmptyStreaming ? (
-        <div className={styles.generatingBubble} aria-label="正在生成" role="status">
-          <span className={styles.generatingDots} aria-hidden>
-            <span className={styles.generatingDot} />
-            <span className={styles.generatingDot} />
-            <span className={styles.generatingDot} />
-          </span>
+        <div className={styles.generating} aria-label="正在生成" role="status">
+          <ThreeDots />
         </div>
       ) : message.content ? (
         <MarkdownMessage content={message.content} animating={streaming} />

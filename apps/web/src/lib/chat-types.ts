@@ -46,6 +46,8 @@ export interface StoredMessage {
   id?: number
   role: Role
   content: string
+  /** 思考过程；历史回放展示用，不回传上游 */
+  reasoning?: string
   ts: number
 }
 

@@ -42,11 +42,13 @@ function resolveAssistantContent(textToSave: string, hadReasoning: boolean): str
 function persistAssistantIfAny(
   sessionCode: string,
   fullText: string,
+  fullReasoning: string,
   hadReasoning: boolean,
 ): number | null {
   const contentToSave = resolveAssistantContent(stripThinkingTags(fullText), hadReasoning);
   if (!contentToSave) return null;
-  return historyStore.appendMessage(sessionCode, 'assistant', contentToSave);
+  const reasoningToSave = fullReasoning.trim() ? fullReasoning : undefined;
+  return historyStore.appendMessage(sessionCode, 'assistant', contentToSave, reasoningToSave);
 }
 
 function saveReplayCacheIfComplete(
@@ -124,10 +126,15 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
           }
         }
 
-        const { fullText, hadReasoning } = aggregateStreamChunks(streamedDeltas);
+        const { fullText, fullReasoning, hadReasoning } = aggregateStreamChunks(streamedDeltas);
         const completed = !ac.signal.aborted;
 
-        const assistantId = persistAssistantIfAny(session.sessionCode, fullText, hadReasoning);
+        const assistantId = persistAssistantIfAny(
+          session.sessionCode,
+          fullText,
+          fullReasoning,
+          hadReasoning,
+        );
         saveReplayCacheIfComplete(
           assistantId,
           provider,
@@ -145,8 +152,8 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
         }
       } catch (err) {
         request.log.error(err);
-        const { fullText, hadReasoning } = aggregateStreamChunks(streamedDeltas);
-        persistAssistantIfAny(session.sessionCode, fullText, hadReasoning);
+        const { fullText, fullReasoning, hadReasoning } = aggregateStreamChunks(streamedDeltas);
+        persistAssistantIfAny(session.sessionCode, fullText, fullReasoning, hadReasoning);
         send('error', { message: err instanceof Error ? err.message : 'stream error' });
       } finally {
         if (!raw.writableEnded) raw.end();
