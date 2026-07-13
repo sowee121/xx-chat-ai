@@ -4,6 +4,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { ChatMessage, Provider, ProviderInfo, SessionSummary, StoredMessage } from '@/lib/chat-types'
+import { STREAM_IDLE_TIMEOUT_MESSAGE } from '@/lib/streamIdle'
 import { streamChat } from '@/services/sseClient'
 import {
   deleteSession as deleteSessionApi,
@@ -143,6 +144,8 @@ interface ChatState {
   setProvider: (provider: Provider) => void
   setModel: (model: string) => void
   prefillComposer: (text: string) => void
+  /** 暗门：展示流式错误红条（不发起请求） */
+  previewError: (message?: string) => void
   send: (query: string) => Promise<void>
   stop: () => void
   newChat: () => void
@@ -193,6 +196,13 @@ export const useChatStore = create<ChatState>()(
           composerPrefillText: text,
           composerPrefillSeq: s.composerPrefillSeq + 1,
         })),
+
+      previewError: (message) =>
+        set({
+          error: message?.trim() || STREAM_IDLE_TIMEOUT_MESSAGE,
+          isStreaming: false,
+          _abort: undefined,
+        }),
 
       loadModels: async () =>
         once(loadModelsOnce, async () => {
