@@ -1,12 +1,12 @@
 /**
- * 聊天 SSE 路由：流式推送、落库、防重 delta 回放
+ * 聊天 SSE 路由：流式推送与落库（重新生成按 keepMessageCount 截断后续，不追加 user）
  */
 import type { FastifyInstance } from 'fastify';
-import { resolveRequestModel } from '../lib/resolveModel.js';
 import { withStreamIdleTimeout } from '../lib/streamIdle.js';
-import { aggregateStreamChunks, pacedReplayStream } from '../lib/streamReplay.js';
+import { aggregateStreamChunks } from '../lib/streamAggregate.js';
 import { stripThinkingTags } from '../lib/thinkingParser.js';
 import { UpstreamUserError } from '../lib/upstreamError.js';
+import { GENERATION_STOPPED_MESSAGE } from '../lib/generationStopped.js';
 import { getDefaultProvider } from '../providers/config.js';
 import { getProvider } from '../providers/index.js';
 import { SessionNotFoundError } from '../store/history.js';
@@ -23,6 +23,8 @@ const bodySchema = {
     sessionCode: { type: 'string' },
     provider: { type: 'string', enum: ['mock', 'openai'] },
     model: { type: 'string', minLength: 1 },
+    regenerate: { type: 'boolean' },
+    keepMessageCount: { type: 'integer', minimum: 0 },
     messages: {
       type: 'array',
       items: {
@@ -59,31 +61,32 @@ function persistAssistantIfAny(
   const contentToSave = resolveAssistantContent(stripThinkingTags(fullText), hadReasoning);
   if (!contentToSave) return null;
   const reasoningToSave = fullReasoning.trim() ? fullReasoning : undefined;
-  return historyStore.appendMessage(sessionCode, 'assistant', contentToSave, reasoningToSave);
+  return historyStore.appendMessage(sessionCode, 'assistant', contentToSave, {
+    reasoning: reasoningToSave,
+  });
 }
 
 /**
- * 无任何流式产出且未落库 assistant 时，回滚本轮孤儿 user
+ * 业务错误 / 超时：保留 user，写入 assistant（可含 partial）+ 独立错误字段
+ * content 可为空串；errorMessage 为面向用户中文，errorDetail 为上游明细
  */
-function rollbackOrphanUserIfNeeded(
+function persistAssistantOnError(
   sessionCode: string,
-  streamedDeltas: StreamChunk[],
-  assistantId: number | null,
-): void {
-  if (assistantId != null || streamedDeltas.length > 0) return;
-  historyStore.deleteLastUserMessage(sessionCode);
-}
-
-/** 仅完整结束时写入防重缓存，中途 abort 不缓存半截流 */
-function saveReplayCacheIfComplete(
-  messageId: number | null,
-  provider: string,
-  model: string,
-  deltas: StreamChunk[],
-  completed: boolean,
-): void {
-  if (!completed || messageId == null || deltas.length === 0) return;
-  historyStore.saveStreamCache(messageId, provider, model, deltas);
+  fullText: string,
+  fullReasoning: string,
+  hadReasoning: boolean,
+  errorMessage: string,
+  errorDetail?: string,
+): number {
+  const stripped = stripThinkingTags(fullText);
+  const contentToSave =
+    stripped || (hadReasoning ? REASONING_ONLY_PLACEHOLDER : '');
+  const reasoningToSave = fullReasoning.trim() ? fullReasoning : undefined;
+  return historyStore.appendMessage(sessionCode, 'assistant', contentToSave, {
+    reasoning: reasoningToSave,
+    errorMessage,
+    errorDetail,
+  });
 }
 
 /** 注册聊天 SSE 路由*/
@@ -94,7 +97,15 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
     async (request, reply) => {
       const body = request.body;
       const provider = body.provider ?? getDefaultProvider();
-      const model = resolveRequestModel(provider, body.model);
+      const regenerate = Boolean(body.regenerate);
+
+      // 重新生成必须带已有 sessionCode，且不走新建会话
+      if (regenerate && !body.sessionCode) {
+        return reply.code(400).send({ error: '重新生成需要 sessionCode' });
+      }
+      if (regenerate && typeof body.keepMessageCount !== 'number') {
+        return reply.code(400).send({ error: '重新生成需要 keepMessageCount' });
+      }
 
       let session;
       try {
@@ -107,15 +118,12 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
         throw err;
       }
 
-      // 同会话同文案同模型命中则走回放，不调大模型
-      const replayDeltas = historyStore.findReplayDeltas(
-        session.sessionCode,
-        body.query,
-        provider,
-        model,
-      );
-
-      historyStore.appendMessage(session.sessionCode, 'user', body.query);
+      if (regenerate) {
+        // 截断：保留 keepMessageCount 条（含触发重生的 user），删除该助手及后续；不追加 user
+        historyStore.truncateMessagesAfter(session.sessionCode, body.keepMessageCount!);
+      } else {
+        historyStore.appendMessage(session.sessionCode, 'user', body.query);
+      }
 
       const ac = new AbortController();
 
@@ -142,34 +150,22 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
       const streamedDeltas: StreamChunk[] = [];
 
       try {
-        if (replayDeltas) {
-          // 回放仍走空闲超时，避免卡死；Mock 实时流不套超时
-          for await (const delta of withStreamIdleTimeout(
-            pacedReplayStream(replayDeltas, ac.signal),
-            { signal: ac.signal, abort: () => ac.abort() },
-          )) {
-            if (ac.signal.aborted) break;
-            streamedDeltas.push(delta);
-            send('delta', delta);
-          }
-        } else {
-          const stream = getProvider(provider)({
-            query: body.query,
-            messages: body.messages ?? [],
-            signal: ac.signal,
-            model: body.model,
-          });
+        const stream = getProvider(provider)({
+          query: body.query,
+          messages: body.messages ?? [],
+          signal: ac.signal,
+          model: body.model,
+        });
 
-          const deltaSource =
-            provider === 'mock'
-              ? stream
-              : withStreamIdleTimeout(stream, { signal: ac.signal, abort: () => ac.abort() });
+        const deltaSource =
+          provider === 'mock'
+            ? stream
+            : withStreamIdleTimeout(stream, { signal: ac.signal, abort: () => ac.abort() });
 
-          for await (const delta of deltaSource) {
-            if (ac.signal.aborted) break;
-            streamedDeltas.push(delta);
-            send('delta', delta);
-          }
+        for await (const delta of deltaSource) {
+          if (ac.signal.aborted) break;
+          streamedDeltas.push(delta);
+          send('delta', delta);
         }
 
         const { fullText, fullReasoning, hadReasoning } = aggregateStreamChunks(streamedDeltas);
@@ -181,37 +177,59 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
           fullReasoning,
           hadReasoning,
         );
-        saveReplayCacheIfComplete(
-          assistantId,
-          provider,
-          model,
-          replayDeltas ?? streamedDeltas,
-          completed,
-        );
+        // 用户停止且无任何产出：写入软提示，避免历史只剩 user
+        if (!completed && assistantId == null) {
+          historyStore.appendMessage(session.sessionCode, 'assistant', '', {
+            statusMessage: GENERATION_STOPPED_MESSAGE,
+          });
+        }
 
         if (completed) {
           send('done', {
             sessionCode: session.sessionCode,
             finishReason: 'stop',
-            replayed: Boolean(replayDeltas),
           });
         }
       } catch (err) {
-        request.log.error(err);
-        // 报错 / 空闲超时路径也落库已生成的 partial，与 abort 行为对齐
+        const isAbort = err instanceof Error && err.name === 'AbortError';
         const { fullText, fullReasoning, hadReasoning } = aggregateStreamChunks(streamedDeltas);
-        const assistantId = persistAssistantIfAny(
-          session.sessionCode,
-          fullText,
-          fullReasoning,
-          hadReasoning,
-        );
-        // 建连失败等：无任何产出时回滚本轮 user
-        rollbackOrphanUserIfNeeded(session.sessionCode, streamedDeltas, assistantId);
-        ac.abort();
-        const message = err instanceof Error ? err.message : 'stream error';
-        const detail = err instanceof UpstreamUserError ? err.detail : undefined;
-        send('error', detail ? { message, detail } : { message });
+
+        if (isAbort) {
+          // 用户停止 / 客户端断开：有产出落 partial；无产出写「已停止生成」提示
+          const assistantId = persistAssistantIfAny(
+            session.sessionCode,
+            fullText,
+            fullReasoning,
+            hadReasoning,
+          );
+          if (assistantId == null) {
+            historyStore.appendMessage(session.sessionCode, 'assistant', '', {
+              statusMessage: GENERATION_STOPPED_MESSAGE,
+            });
+          }
+          ac.abort();
+        } else {
+          request.log.error(
+            {
+              err,
+              upstreamCause: err instanceof Error ? err.cause : undefined,
+            },
+            'chat stream failed',
+          );
+          const message = err instanceof Error ? err.message : 'stream error';
+          const detail = err instanceof UpstreamUserError ? err.detail : undefined;
+          // 保留 user，失败态写入独立 error_* 字段（可带 partial 正文）
+          persistAssistantOnError(
+            session.sessionCode,
+            fullText,
+            fullReasoning,
+            hadReasoning,
+            message,
+            detail,
+          );
+          ac.abort();
+          send('error', detail ? { message, detail } : { message });
+        }
       } finally {
         if (!raw.writableEnded) raw.end();
       }

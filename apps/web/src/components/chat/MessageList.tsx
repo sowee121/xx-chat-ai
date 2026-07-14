@@ -62,7 +62,7 @@ export function MessageList({ sessionCode, active }: MessageListProps) {
   const messages = active && liveMessages !== undefined ? liveMessages : frozenRef.current
   const count = messages.length
   const last = messages[count - 1]
-  const lastScrollKey = `${last?.content ?? ''}|${last?.reasoning ?? ''}`
+  const lastScrollKey = `${last?.content ?? ''}|${last?.reasoning ?? ''}|${last?.errorMessage ?? ''}|${last?.statusMessage ?? ''}`
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const columnRef = useRef<HTMLDivElement>(null)
@@ -75,6 +75,7 @@ export function MessageList({ sessionCode, active }: MessageListProps) {
   activeRef.current = active
   const hasBeenActiveRef = useRef(false)
   const prevCountRef = useRef(count)
+  const prevStreamingRef = useRef(false)
   const [showJump, setShowJump] = useState(false)
   const [jumpInstant, setJumpInstant] = useState(false)
   const [contentMasked, setContentMasked] = useState(false)
@@ -200,19 +201,41 @@ export function MessageList({ sessionCode, active }: MessageListProps) {
     jumpingRef.current = false
   }, [active, sessionCode])
 
-  // 新发消息：绘制前立刻贴底并关掉按钮（无退出动画），避免先闪「回到底部」
+  /** 开始跟随贴底：关掉「回到底部」，避免截断/流式时状态滞后 */
+  const snapFollowInstant = () => {
+    followRef.current = true
+    jumpingRef.current = false
+    setJumpInstant(true)
+    setShowJump(false)
+    snapToBottom()
+    beginLayoutSnap()
+  }
+
+  // 条数变化：发送变多 / 重生截断变少 → 贴底；非流式缩短则只重算按钮态
   useLayoutEffect(() => {
     if (!active) return
     const prev = prevCountRef.current
     prevCountRef.current = count
-    if (count > prev) {
-      followRef.current = true
-      setJumpInstant(true)
-      setShowJump(false)
-      snapToBottom()
-      beginLayoutSnap()
+    if (count === prev) return
+    if (count > prev || (count < prev && isStreaming)) {
+      snapFollowInstant()
+      return
     }
-  }, [count, active])
+    const el = scrollRef.current
+    if (el) updateScrollUi(el, followRef, setShowJump)
+  }, [count, active, isStreaming])
+
+  // 末条重生：条数不变但进入流式，同样贴底并关掉按钮
+  useLayoutEffect(() => {
+    if (!active) {
+      prevStreamingRef.current = false
+      return
+    }
+    const wasStreaming = prevStreamingRef.current
+    prevStreamingRef.current = Boolean(isStreaming)
+    if (wasStreaming || !isStreaming) return
+    snapFollowInstant()
+  }, [isStreaming, active])
 
   useEffect(() => {
     if (showJump || !jumpInstant) return
@@ -257,7 +280,11 @@ export function MessageList({ sessionCode, active }: MessageListProps) {
         <div className={styles.gutter}>
           <div ref={columnRef} className={styles.column}>
             {messages.map((m, i) => (
-              <MessageItem key={m.id} message={m} streaming={isStreaming && i === count - 1} />
+              <MessageItem
+                key={m.id}
+                message={m}
+                streaming={isStreaming && i === count - 1}
+              />
             ))}
             {error && <StreamErrorBanner message={error} detail={errorDetail} />}
             <div className={styles.bottomSpacer} aria-hidden />

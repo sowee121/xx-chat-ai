@@ -2,7 +2,7 @@
  * 历史存储接口与内存实现（无 SQLite 时回退）
  */
 import { randomUUID } from 'node:crypto';
-import type { Role, StreamChunk } from '../types.js';
+import type { Role } from '../types.js';
 
 /** 客户端传入的 sessionCode 在库中不存在 */
 export class SessionNotFoundError extends Error {
@@ -19,6 +19,12 @@ export interface StoredMessage {
   content: string;
   /** 思考过程；仅 assistant 可选；展示用，不回传上游 */
   reasoning?: string;
+  /** 本轮失败面向用户的中文说明；与 content 分离 */
+  errorMessage?: string;
+  /** 上游明细，形如 `type: message` */
+  errorDetail?: string;
+  /** 软状态提示（如已停止生成）；非错误、不入多轮 */
+  statusMessage?: string;
   ts: number;
 }
 
@@ -53,27 +59,33 @@ export interface HistoryStore {
    * - 有 sessionCode 但不存在：抛出 SessionNotFoundError（不静默建空壳）
    */
   ensureSession(sessionCode: string | undefined, title: string): Session;
-  /** 追加一条消息*/
-  appendMessage(sessionCode: string, role: Role, content: string, reasoning?: string): number;
+  /** 追加一条消息（assistant 可带 reasoning / 错误字段） */
+  appendMessage(
+    sessionCode: string,
+    role: Role,
+    content: string,
+    options?: {
+      reasoning?: string;
+      errorMessage?: string;
+      errorDetail?: string;
+      statusMessage?: string;
+    },
+  ): number;
   /**
-   * 若会话最后一条是 user，则删除之（建连失败回滚孤儿 user）
+   * 若会话最后一条是 user，则删除之（保留接口；业务错误路径不再调用）
    * @returns 是否删除成功
    */
   deleteLastUserMessage(sessionCode: string): boolean;
-  /** 上一条 user+assistant 回合与 query/model 匹配时，返回可回放的流式 delta */
-  findReplayDeltas(
-    sessionCode: string,
-    query: string,
-    provider: string,
-    model: string,
-  ): StreamChunk[] | null;
-  /** 保存流式回放缓存*/
-  saveStreamCache(
-    messageId: number,
-    provider: string,
-    model: string,
-    deltas: StreamChunk[],
-  ): void;
+  /**
+   * 若会话最后一条是 assistant，则删除之（重新生成前清掉旧助手）
+   * @returns 是否删除成功
+   */
+  deleteLastAssistantMessage(sessionCode: string): boolean;
+  /**
+   * 按顺序保留前 keepCount 条，删除之后全部（重新生成截断后续）
+   * @returns 实际删除条数
+   */
+  truncateMessagesAfter(sessionCode: string, keepCount: number): number;
   /** 删除单个会话*/
   deleteSession(sessionCode: string): boolean;
   /** @returns 实际删除条数 */
@@ -89,20 +101,6 @@ export function titleFromQuery(query: string): string {
 class InMemoryHistoryStore implements HistoryStore {
   private sessions = new Map<string, Session>();
   private nextMessageId = 1;
-  private streamCache = new Map<
-    number,
-    { provider: string; model: string; deltas: StreamChunk[] }
-  >();
-
-  /** 查找末轮 assistant 消息 id */
-  private findLastAssistantMessageId(sessionCode: string): number | undefined {
-    const session = this.sessions.get(sessionCode);
-    if (!session || session.messages.length < 2) return undefined;
-    const last = session.messages[session.messages.length - 1];
-    const prev = session.messages[session.messages.length - 2];
-    if (last.role !== 'assistant' || prev.role !== 'user' || last.id == null) return undefined;
-    return last.id;
-  }
 
   /** 列出会话摘要*/
   listSessions(): SessionSummary[] {
@@ -142,12 +140,25 @@ class InMemoryHistoryStore implements HistoryStore {
   }
 
   /** 追加一条消息*/
-  appendMessage(sessionCode: string, role: Role, content: string, reasoning?: string): number {
+  appendMessage(
+    sessionCode: string,
+    role: Role,
+    content: string,
+    options?: {
+      reasoning?: string;
+      errorMessage?: string;
+      errorDetail?: string;
+      statusMessage?: string;
+    },
+  ): number {
     const session = this.sessions.get(sessionCode);
     if (!session) return 0;
     const id = this.nextMessageId++;
     const msg: StoredMessage = { id, role, content, ts: Date.now() };
-    if (reasoning) msg.reasoning = reasoning;
+    if (options?.reasoning) msg.reasoning = options.reasoning;
+    if (options?.errorMessage) msg.errorMessage = options.errorMessage;
+    if (options?.errorDetail) msg.errorDetail = options.errorDetail;
+    if (options?.statusMessage) msg.statusMessage = options.statusMessage;
     session.messages.push(msg);
     session.updatedAt = Date.now();
     return id;
@@ -164,46 +175,32 @@ class InMemoryHistoryStore implements HistoryStore {
     return true;
   }
 
-  /** 查找可回放的流式缓存*/
-  findReplayDeltas(
-    sessionCode: string,
-    query: string,
-    provider: string,
-    model: string,
-  ): StreamChunk[] | null {
+  /** 删除末条 assistant 消息 */
+  deleteLastAssistantMessage(sessionCode: string): boolean {
     const session = this.sessions.get(sessionCode);
-    if (!session || session.messages.length < 2) return null;
-
+    if (!session || session.messages.length === 0) return false;
     const last = session.messages[session.messages.length - 1];
-    const prev = session.messages[session.messages.length - 2];
-    if (last.role !== 'assistant' || prev.role !== 'user') return null;
-    if (prev.content !== query.trim()) return null;
-    if (last.id == null) return null;
-
-    const cached = this.streamCache.get(last.id);
-    if (!cached || cached.provider !== provider || cached.model !== model) return null;
-    return cached.deltas;
+    if (last.role !== 'assistant') return false;
+    session.messages.pop();
+    session.updatedAt = Date.now();
+    return true;
   }
 
-  /** 保存流式回放缓存*/
-  saveStreamCache(
-    messageId: number,
-    provider: string,
-    model: string,
-    deltas: StreamChunk[],
-  ): void {
-    this.streamCache.set(messageId, { provider, model, deltas });
+  /** 保留前 keepCount 条，删除其后所有消息 */
+  truncateMessagesAfter(sessionCode: string, keepCount: number): number {
+    const session = this.sessions.get(sessionCode);
+    if (!session) return 0;
+    const safeKeep = Math.max(0, Math.floor(keepCount));
+    if (session.messages.length <= safeKeep) return 0;
+    const removed = session.messages.length - safeKeep;
+    session.messages = session.messages.slice(0, safeKeep);
+    session.updatedAt = Date.now();
+    return removed;
   }
 
   /** 删除单个会话*/
   deleteSession(sessionCode: string): boolean {
-    const session = this.sessions.get(sessionCode);
-    if (!session) return false;
-    for (const message of session.messages) {
-      if (message.id != null) this.streamCache.delete(message.id);
-    }
-    this.sessions.delete(sessionCode);
-    return true;
+    return this.sessions.delete(sessionCode);
   }
 
   /** 批量删除会话*/

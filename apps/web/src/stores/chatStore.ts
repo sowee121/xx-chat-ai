@@ -5,6 +5,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { ChatMessage, Provider, ProviderInfo, SessionSummary, StoredMessage } from '@/lib/chat-types'
 import { isPendingSessionCode, PENDING_SESSION_CODE } from '@/lib/pendingSession'
+import { GENERATION_STOPPED_MESSAGE } from '@/lib/generationStopped'
 import { REASONING_ONLY_PLACEHOLDER } from '@/lib/reasoningPlaceholder'
 import { isSessionGoneMessage } from '@/lib/sessionGone'
 import { streamChat } from '@/services/sseClient'
@@ -65,6 +66,9 @@ function toChatMessages(stored: StoredMessage[]): ChatMessage[] {
     role: m.role,
     content: m.content,
     ...(m.reasoning ? { reasoning: m.reasoning } : {}),
+    ...(m.errorMessage ? { errorMessage: m.errorMessage } : {}),
+    ...(m.errorDetail ? { errorDetail: m.errorDetail } : {}),
+    ...(m.statusMessage ? { statusMessage: m.statusMessage } : {}),
   }))
 }
 
@@ -81,7 +85,10 @@ function messagesEqual(a: ChatMessage[], b: ChatMessage[]): boolean {
       m.id === b[i].id &&
       m.role === b[i].role &&
       m.content === b[i].content &&
-      (m.reasoning ?? '') === (b[i].reasoning ?? ''),
+      (m.reasoning ?? '') === (b[i].reasoning ?? '') &&
+      (m.errorMessage ?? '') === (b[i].errorMessage ?? '') &&
+      (m.errorDetail ?? '') === (b[i].errorDetail ?? '') &&
+      (m.statusMessage ?? '') === (b[i].statusMessage ?? ''),
   )
 }
 
@@ -95,6 +102,16 @@ function syncSessionCache(sessionCode: string, messages: ChatMessage[]) {
 function dropSessionCache(sessionCode: string) {
   if (isPendingSessionCode(sessionCode)) return
   sessionMessagesCache.delete(sessionCode)
+}
+
+/** 会话已在服务端不存在：清缓存、卸面板、侧栏去掉幽灵项并静默刷新列表 */
+function evictGhostSession(get: ChatStoreGet, set: ChatStoreSet, sessionCode: string): void {
+  dropSessionCache(sessionCode)
+  set((s) => ({
+    mountedSessionCodes: s.mountedSessionCodes.filter((c) => c !== sessionCode),
+    sessions: s.sessions.filter((sess) => sess.sessionCode !== sessionCode),
+  }))
+  void get().loadSessions()
 }
 
 /** 读取会话消息缓存*/
@@ -135,6 +152,21 @@ function mountSessionCode(get: ChatStoreGet, set: ChatStoreSet, sessionCode: str
   set({ mountedSessionCodes: mounted })
 }
 
+/** 构造发给模型的多轮正文（不含 reasoning / 错误 / 停止提示） */
+function toHistoryPayload(messages: ChatMessage[]): { role: ChatMessage['role']; content: string }[] {
+  return messages
+    .filter((m) => {
+      if (m.role !== 'assistant') return true
+      if (m.errorMessage && !m.content.trim()) return false
+      if (m.statusMessage && !m.content.trim()) return false
+      const content = m.content.trim()
+      if (!content) return false
+      if (content === REASONING_ONLY_PLACEHOLDER) return false
+      return true
+    })
+    .map((m) => ({ role: m.role, content: m.content }))
+}
+
 /** 仅推理无正文：与服务端落库占位对齐 */
 function applyReasoningOnlyPlaceholder(set: ChatStoreSet): void {
   set((s) => {
@@ -142,6 +174,7 @@ function applyReasoningOnlyPlaceholder(set: ChatStoreSet): void {
     const last = messages[messages.length - 1]
     if (
       last?.role === 'assistant' &&
+      !last.errorMessage &&
       !last.content.trim() &&
       (last.reasoning ?? '').trim()
     ) {
@@ -184,6 +217,8 @@ interface ChatState {
   /** 暗门：展示流式错误红条（不发起请求） */
   previewError: (message?: string) => void
   send: (query: string) => Promise<void>
+  /** 重新生成指定助手：截断该条及后续后重拉（不追加 user） */
+  regenerate: (assistantMessageId: string) => Promise<void>
   stop: () => void
   newChat: () => void
   loadProviders: () => Promise<void>
@@ -192,6 +227,125 @@ interface ChatState {
   openSession: (sessionCode: string) => Promise<boolean>
   removeSession: (sessionCode: string) => Promise<boolean>
   removeSessions: (sessionCodes: string[]) => Promise<boolean>
+}
+
+/** 发送 / 重新生成共用的助手流式生命周期 */
+async function runAssistantStream(
+  get: ChatStoreGet,
+  set: ChatStoreSet,
+  opts: {
+    query: string
+    sessionCode?: string
+    regenerate?: boolean
+    keepMessageCount?: number
+    messages: { role: ChatMessage['role']; content: string }[]
+    signal: AbortSignal
+    streamToken: number
+  },
+): Promise<void> {
+  const isStreamActive = () => get()._streamSeq === opts.streamToken
+
+  const appendToAssistant = (delta: { type: 'reasoning' | 'text'; content: string }) => {
+    if (!isStreamActive()) return
+    set((s) => {
+      const messages = s.messages.slice()
+      const last = messages[messages.length - 1]
+      if (last && last.role === 'assistant') {
+        if (delta.type === 'reasoning') {
+          messages[messages.length - 1] = {
+            ...last,
+            reasoning: (last.reasoning ?? '') + delta.content,
+          }
+        } else {
+          messages[messages.length - 1] = {
+            ...last,
+            content: last.content + delta.content,
+          }
+        }
+      }
+      return { messages }
+    })
+  }
+
+  await streamChat(
+    {
+      query: opts.query,
+      sessionCode: opts.sessionCode,
+      regenerate: opts.regenerate,
+      keepMessageCount: opts.keepMessageCount,
+      provider: get().provider,
+      model: get().provider === 'openai' ? get().model : undefined,
+      messages: opts.messages,
+      signal: opts.signal,
+    },
+    {
+      onMeta: (meta) => {
+        if (!isStreamActive()) return
+        set((s) => ({
+          mountedSessionCodes: s.mountedSessionCodes.filter((c) => !isPendingSessionCode(c)),
+        }))
+        mountSessionCode(get, set, meta.sessionCode)
+        set({ sessionCode: meta.sessionCode })
+        void get().loadSessions()
+      },
+      onDelta: appendToAssistant,
+      onDone: () => {
+        if (!isStreamActive()) return
+        applyReasoningOnlyPlaceholder(set)
+        set({ isStreaming: false, _abort: undefined })
+      },
+      onError: (message, detail) => {
+        if (!isStreamActive()) return
+        const staleSession = isSessionGoneMessage(message)
+        if (!staleSession) {
+          set((s) => {
+            const messages = s.messages.slice()
+            const last = messages[messages.length - 1]
+            if (last?.role === 'assistant') {
+              messages[messages.length - 1] = {
+                ...last,
+                errorMessage: message,
+                ...(detail ? { errorDetail: detail } : {}),
+              }
+            }
+            return {
+              error: undefined,
+              errorDetail: undefined,
+              isStreaming: false,
+              _abort: undefined,
+              messages,
+            }
+          })
+          void get().loadSessions()
+          return
+        }
+        showToast(message)
+        const code = get().sessionCode
+        if (code && !isPendingSessionCode(code)) dropSessionCache(code)
+        set((s) => ({
+          error: undefined,
+          errorDetail: undefined,
+          isStreaming: false,
+          _abort: undefined,
+          sessionCode: undefined,
+          sessionGoneSeq: s.sessionGoneSeq + 1,
+          messages: s.messages.length >= 2 ? s.messages.slice(0, -2) : [],
+          mountedSessionCodes: s.mountedSessionCodes.filter(
+            (c) => c !== code && !isPendingSessionCode(c),
+          ),
+        }))
+        void get().loadSessions()
+      },
+    },
+  )
+
+  void get().loadSessions()
+
+  if (!isStreamActive()) return
+
+  if (get().isStreaming) set({ isStreaming: false, _abort: undefined })
+  const code = get().sessionCode
+  if (code && !isPendingSessionCode(code)) syncSessionCache(code, get().messages)
 }
 
 export const useChatStore = create<ChatState>()(
@@ -309,8 +463,8 @@ export const useChatStore = create<ChatState>()(
       },
 
       /** 拉取侧栏历史列表 */
-      loadSessions: async () =>
-        once(loadSessionsOnce, async () => {
+      loadSessions: async () => {
+        const run = async () => {
           const showLoading = get().sessions.length === 0
           if (showLoading) set({ sessionsLoading: true })
           try {
@@ -320,7 +474,14 @@ export const useChatStore = create<ChatState>()(
           } finally {
             if (showLoading) set({ sessionsLoading: false })
           }
-        }),
+        }
+
+        // 首屏并发（Strict Mode）去重；已有列表时每次强制拉新，避免复用「建会话前」的旧结果
+        if (get().sessions.length === 0) {
+          return once(loadSessionsOnce, run)
+        }
+        return run()
+      },
 
       /** 打开指定会话（缓存优先） */
       openSession: async (sessionCode) => {
@@ -405,7 +566,10 @@ export const useChatStore = create<ChatState>()(
           const message = e instanceof Error ? e.message : '加载对话失败'
           // 已删对话：顶部 Toast，不占消息区错误红条
           const gone = isSessionGoneMessage(message)
-          if (gone) showToast(message)
+          if (gone) {
+            showToast(message)
+            evictGhostSession(get, set, sessionCode)
+          }
           set({
             error: gone ? undefined : message,
             errorDetail: undefined,
@@ -429,10 +593,13 @@ export const useChatStore = create<ChatState>()(
           if (!isSessionGoneMessage(message)) return false
         }
         dropSessionCache(sessionCode)
+        // 当前会话留给侧栏 goHome 清掉，避免 URL 仍是 /chat/:code 时先卸面板触发 openSession 闪动
         set((s) => ({
-          mountedSessionCodes: s.mountedSessionCodes.filter((c) => c !== sessionCode),
+          mountedSessionCodes:
+            s.sessionCode === sessionCode
+              ? s.mountedSessionCodes
+              : s.mountedSessionCodes.filter((c) => c !== sessionCode),
         }))
-        if (get().sessionCode === sessionCode) get().newChat()
         await get().loadSessions()
         return true
       },
@@ -448,11 +615,13 @@ export const useChatStore = create<ChatState>()(
           if (!isSessionGoneMessage(message)) return false
         }
         for (const code of sessionCodes) dropSessionCache(code)
-        set((s) => ({
-          mountedSessionCodes: s.mountedSessionCodes.filter((c) => !sessionCodes.includes(c)),
-        }))
         const current = get().sessionCode
-        if (current && sessionCodes.includes(current)) get().newChat()
+        const deletingCurrent = Boolean(current && sessionCodes.includes(current))
+        set((s) => ({
+          mountedSessionCodes: deletingCurrent
+            ? s.mountedSessionCodes
+            : s.mountedSessionCodes.filter((c) => !sessionCodes.includes(c)),
+        }))
         await get().loadSessions()
         return true
       },
@@ -466,8 +635,11 @@ export const useChatStore = create<ChatState>()(
           if (last?.role === 'assistant') {
             const empty = !last.content.trim() && !(last.reasoning ?? '').trim()
             if (empty) {
-              // 无任何产出的幽灵助手行
-              messages.pop()
+              // 无产出停止：保留助手行，写入与库一致的软提示
+              messages[messages.length - 1] = {
+                ...last,
+                statusMessage: GENERATION_STOPPED_MESSAGE,
+              }
             } else if (!last.content.trim() && (last.reasoning ?? '').trim()) {
               messages[messages.length - 1] = {
                 ...last,
@@ -490,16 +662,7 @@ export const useChatStore = create<ChatState>()(
         const state = get()
         if (!trimmed || state.isStreaming) return
 
-        // 多轮上下文只带正文：过滤空 assistant、仅推理占位符
-        const history = state.messages
-          .filter((m) => {
-            if (m.role !== 'assistant') return true
-            const content = m.content.trim()
-            if (!content) return false
-            if (content === REASONING_ONLY_PLACEHOLDER) return false
-            return true
-          })
-          .map((m) => ({ role: m.role, content: m.content }))
+        const history = toHistoryPayload(state.messages)
         const userMsg: ChatMessage = { id: uid(), role: 'user', content: trimmed }
         const assistantMsg: ChatMessage = { id: uid(), role: 'assistant', content: '', reasoning: '' }
 
@@ -521,109 +684,57 @@ export const useChatStore = create<ChatState>()(
         // 乐观挂载，避免 meta 前主区空白
         mountSessionCode(get, set, mountCode)
 
-        const isStreamActive = () => get()._streamSeq === streamToken
+        await runAssistantStream(get, set, {
+          query: trimmed,
+          sessionCode: hasRealSession ? state.sessionCode : undefined,
+          messages: history,
+          signal: ac.signal,
+          streamToken,
+        })
+      },
 
-        // 按 delta.type 分别累加 reasoning / content
-        const appendToAssistant = (delta: { type: 'reasoning' | 'text'; content: string }) => {
-          if (!isStreamActive()) return
-          set((s) => {
-            const messages = s.messages.slice()
-            const last = messages[messages.length - 1]
-            if (last && last.role === 'assistant') {
-              if (delta.type === 'reasoning') {
-                messages[messages.length - 1] = {
-                  ...last,
-                  reasoning: (last.reasoning ?? '') + delta.content,
-                }
-              } else {
-                messages[messages.length - 1] = {
-                  ...last,
-                  content: last.content + delta.content,
-                }
-              }
-            }
-            return { messages }
-          })
-        }
+      /** 重新生成指定助手：截断该条及后续消息后重拉 */
+      regenerate: async (assistantMessageId) => {
+        const state = get()
+        if (state.isStreaming) return
+        const { messages, sessionCode } = state
+        if (!sessionCode || isPendingSessionCode(sessionCode)) return
 
-        await streamChat(
-          {
-            query: trimmed,
-            // pending 不传服务端，由服务端新建会话
-            sessionCode: hasRealSession ? state.sessionCode : undefined,
-            provider: get().provider,
-            model: get().provider === 'openai' ? get().model : undefined,
-            messages: history,
-            signal: ac.signal,
-          },
-          {
-            onMeta: (meta) => {
-              if (!isStreamActive()) return
-              set((s) => ({
-                mountedSessionCodes: s.mountedSessionCodes.filter((c) => !isPendingSessionCode(c)),
-              }))
-              mountSessionCode(get, set, meta.sessionCode)
-              set({ sessionCode: meta.sessionCode })
-            },
-            onDelta: appendToAssistant,
-            onDone: () => {
-              if (!isStreamActive()) return
-              applyReasoningOnlyPlaceholder(set)
-              set({ isStreaming: false, _abort: undefined })
-            },
-            onError: (message, detail) => {
-              if (!isStreamActive()) return
-              // 会话已删：Toast + 清 code/缓存 + 去掉本轮乐观消息
-              const staleSession = isSessionGoneMessage(message)
-              if (!staleSession) {
-                set((s) => {
-                  const messages = s.messages.slice()
-                  const last = messages[messages.length - 1]
-                  // 建连失败 / 无产出时报错：去掉空助手幽灵行
-                  if (
-                    last?.role === 'assistant' &&
-                    !last.content.trim() &&
-                    !(last.reasoning ?? '').trim()
-                  ) {
-                    messages.pop()
-                  }
-                  return {
-                    error: message,
-                    errorDetail: detail,
-                    isStreaming: false,
-                    _abort: undefined,
-                    messages,
-                  }
-                })
-                return
-              }
-              showToast(message)
-              const code = get().sessionCode
-              if (code && !isPendingSessionCode(code)) dropSessionCache(code)
-              set((s) => ({
-                error: undefined,
-                errorDetail: undefined,
-                isStreaming: false,
-                _abort: undefined,
-                sessionCode: undefined,
-                sessionGoneSeq: s.sessionGoneSeq + 1,
-                messages: s.messages.length >= 2 ? s.messages.slice(0, -2) : [],
-                mountedSessionCodes: s.mountedSessionCodes.filter(
-                  (c) => c !== code && !isPendingSessionCode(c),
-                ),
-              }))
-            },
-          },
-        )
+        const idx = messages.findIndex((m) => m.id === assistantMessageId)
+        if (idx < 1) return
+        const target = messages[idx]
+        const prev = messages[idx - 1]
+        if (target.role !== 'assistant' || prev.role !== 'user') return
 
-        if (!isStreamActive()) return
+        const query = prev.content.trim()
+        if (!query) return
 
-        // 兜底：流程结束后确保流式状态复位
-        if (get().isStreaming) set({ isStreaming: false, _abort: undefined })
-        const code = get().sessionCode
-        if (code && !isPendingSessionCode(code)) syncSessionCache(code, get().messages)
-        // 刷新侧栏会话列表（标题、更新时间、新会话）
-        void get().loadSessions()
+        // 保留到触发 user（含），丢掉该助手及之后所有消息
+        const baseMessages = messages.slice(0, idx)
+        const keepMessageCount = baseMessages.length
+        const history = toHistoryPayload(baseMessages)
+        const assistantMsg: ChatMessage = { id: uid(), role: 'assistant', content: '', reasoning: '' }
+        const streamToken = state._streamSeq + 1
+        const ac = new AbortController()
+
+        set({
+          messages: [...baseMessages, assistantMsg],
+          isStreaming: true,
+          error: undefined,
+          errorDetail: undefined,
+          _abort: ac,
+          _streamSeq: streamToken,
+        })
+
+        await runAssistantStream(get, set, {
+          query,
+          sessionCode,
+          regenerate: true,
+          keepMessageCount,
+          messages: history,
+          signal: ac.signal,
+          streamToken,
+        })
       },
     }),
     {

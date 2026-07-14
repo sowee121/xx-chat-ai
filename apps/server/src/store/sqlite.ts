@@ -1,11 +1,11 @@
 /**
- * SQLite 历史存储：会话、消息、reasoning、流回放缓存
+ * SQLite 历史存储：会话、消息、reasoning
  */
 import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import Database from 'better-sqlite3';
-import type { Role, StreamChunk } from '../types.js';
+import type { Role } from '../types.js';
 import type { HistoryStore, Session, SessionSummary, StoredMessage } from './history.js';
 import { SessionNotFoundError, titleFromQuery } from './history.js';
 
@@ -38,46 +38,35 @@ export class SqliteHistoryStore implements HistoryStore {
         updated_at   INTEGER NOT NULL
       );
       CREATE TABLE IF NOT EXISTS messages (
-        id           INTEGER PRIMARY KEY AUTOINCREMENT,
-        session_code TEXT    NOT NULL REFERENCES sessions(session_code) ON DELETE CASCADE,
-        role         TEXT    NOT NULL,
-        content      TEXT    NOT NULL,
-        reasoning    TEXT,
-        ts           INTEGER NOT NULL
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_code  TEXT    NOT NULL REFERENCES sessions(session_code) ON DELETE CASCADE,
+        role          TEXT    NOT NULL,
+        content       TEXT    NOT NULL,
+        reasoning     TEXT,
+        error_message TEXT,
+        error_detail  TEXT,
+        status_message TEXT,
+        ts            INTEGER NOT NULL
       );
       CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_code, id);
       CREATE INDEX IF NOT EXISTS idx_sessions_updated ON sessions(updated_at DESC);
-      CREATE TABLE IF NOT EXISTS stream_replay_cache (
-        message_id   INTEGER PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,
-        provider     TEXT    NOT NULL,
-        model        TEXT    NOT NULL,
-        deltas_json  TEXT    NOT NULL
-      );
     `);
 
-    // 兼容已有库：旧表无 reasoning 列时补上
+    // 兼容已有库：补齐 reasoning / error_* 列
     const cols = this.db.prepare(`PRAGMA table_info(messages)`).all() as { name: string }[];
-    if (!cols.some((c) => c.name === 'reasoning')) {
+    const colNames = new Set(cols.map((c) => c.name));
+    if (!colNames.has('reasoning')) {
       this.db.exec(`ALTER TABLE messages ADD COLUMN reasoning TEXT`);
     }
-  }
-
-  /** 取会话末尾 user+assistant 对，供防重查询 */
-  private getLastMessagePair(sessionCode: string): { user: StoredMessage; assistant: StoredMessage } | null {
-    const rows = this.db
-      .prepare(
-        `SELECT id, role, content, ts
-         FROM messages
-         WHERE session_code = ?
-         ORDER BY id ASC`,
-      )
-      .all(sessionCode) as StoredMessage[];
-
-    if (rows.length < 2) return null;
-    const assistant = rows[rows.length - 1];
-    const user = rows[rows.length - 2];
-    if (assistant.role !== 'assistant' || user.role !== 'user' || assistant.id == null) return null;
-    return { user, assistant };
+    if (!colNames.has('error_message')) {
+      this.db.exec(`ALTER TABLE messages ADD COLUMN error_message TEXT`);
+    }
+    if (!colNames.has('error_detail')) {
+      this.db.exec(`ALTER TABLE messages ADD COLUMN error_detail TEXT`);
+    }
+    if (!colNames.has('status_message')) {
+      this.db.exec(`ALTER TABLE messages ADD COLUMN status_message TEXT`);
+    }
   }
 
   /** 列出会话摘要*/
@@ -107,7 +96,10 @@ export class SqliteHistoryStore implements HistoryStore {
 
     const messages = this.db
       .prepare(
-        `SELECT id, role, content, reasoning, ts FROM messages WHERE session_code = ? ORDER BY id ASC`,
+        `SELECT id, role, content, reasoning,
+                error_message AS errorMessage, error_detail AS errorDetail,
+                status_message AS statusMessage, ts
+         FROM messages WHERE session_code = ? ORDER BY id ASC`,
       )
       .all(sessionCode) as StoredMessage[];
 
@@ -116,6 +108,9 @@ export class SqliteHistoryStore implements HistoryStore {
       messages: messages.map((m) => ({
         ...m,
         reasoning: m.reasoning || undefined,
+        errorMessage: m.errorMessage || undefined,
+        errorDetail: m.errorDetail || undefined,
+        statusMessage: m.statusMessage || undefined,
       })),
     };
   }
@@ -144,14 +139,35 @@ export class SqliteHistoryStore implements HistoryStore {
   }
 
   /** 追加消息并刷新会话 updated_at；返回 message id */
-  appendMessage(sessionCode: string, role: Role, content: string, reasoning?: string): number {
+  appendMessage(
+    sessionCode: string,
+    role: Role,
+    content: string,
+    options?: {
+      reasoning?: string;
+      errorMessage?: string;
+      errorDetail?: string;
+      statusMessage?: string;
+    },
+  ): number {
     const now = Date.now();
     const result = this.db.transaction(() => {
       const insert = this.db
         .prepare(
-          `INSERT INTO messages (session_code, role, content, reasoning, ts) VALUES (?, ?, ?, ?, ?)`,
+          `INSERT INTO messages
+             (session_code, role, content, reasoning, error_message, error_detail, status_message, ts)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         )
-        .run(sessionCode, role, content, reasoning || null, now);
+        .run(
+          sessionCode,
+          role,
+          content,
+          options?.reasoning || null,
+          options?.errorMessage || null,
+          options?.errorDetail || null,
+          options?.statusMessage || null,
+          now,
+        );
       this.db
         .prepare(`UPDATE sessions SET updated_at = ? WHERE session_code = ?`)
         .run(now, sessionCode);
@@ -178,49 +194,45 @@ export class SqliteHistoryStore implements HistoryStore {
     return true;
   }
 
-  /** 末轮 user 文案与 provider/model 均匹配时返回缓存 delta（含 reasoning） */
-  findReplayDeltas(
-    sessionCode: string,
-    query: string,
-    provider: string,
-    model: string,
-  ): StreamChunk[] | null {
-    const pair = this.getLastMessagePair(sessionCode);
-    if (!pair) return null;
-    if (pair.user.content !== query.trim()) return null;
-
-    const cache = this.db
+  /** 末条若为 assistant 则删除 */
+  deleteLastAssistantMessage(sessionCode: string): boolean {
+    const last = this.db
       .prepare(
-        `SELECT provider, model, deltas_json
-         FROM stream_replay_cache
-         WHERE message_id = ?`,
+        `SELECT id, role FROM messages WHERE session_code = ? ORDER BY id DESC LIMIT 1`,
       )
-      .get(pair.assistant.id) as
-      | { provider: string; model: string; deltas_json: string }
-      | undefined;
-
-    if (!cache || cache.provider !== provider || cache.model !== model) return null;
-
-    try {
-      return JSON.parse(cache.deltas_json) as StreamChunk[];
-    } catch {
-      return null;
-    }
+      .get(sessionCode) as { id: number; role: string } | undefined;
+    if (!last || last.role !== 'assistant') return false;
+    const now = Date.now();
+    this.db.transaction(() => {
+      this.db.prepare(`DELETE FROM messages WHERE id = ?`).run(last.id);
+      this.db
+        .prepare(`UPDATE sessions SET updated_at = ? WHERE session_code = ?`)
+        .run(now, sessionCode);
+    })();
+    return true;
   }
 
-  /** 按 assistant message_id 覆盖写入完整流缓存 */
-  saveStreamCache(
-    messageId: number,
-    provider: string,
-    model: string,
-    deltas: StreamChunk[],
-  ): void {
-    this.db
-      .prepare(
-        `INSERT OR REPLACE INTO stream_replay_cache (message_id, provider, model, deltas_json)
-         VALUES (?, ?, ?, ?)`,
-      )
-      .run(messageId, provider, model, JSON.stringify(deltas));
+  /** 保留前 keepCount 条（按 id 升序），删除其后所有消息 */
+  truncateMessagesAfter(sessionCode: string, keepCount: number): number {
+    const safeKeep = Math.max(0, Math.floor(keepCount));
+    const now = Date.now();
+    return this.db.transaction(() => {
+      const ids = this.db
+        .prepare(
+          `SELECT id FROM messages WHERE session_code = ? ORDER BY id ASC`,
+        )
+        .all(sessionCode) as { id: number }[];
+      if (ids.length <= safeKeep) return 0;
+      const dropIds = ids.slice(safeKeep).map((r) => r.id);
+      const placeholders = dropIds.map(() => '?').join(', ');
+      const result = this.db
+        .prepare(`DELETE FROM messages WHERE id IN (${placeholders})`)
+        .run(...dropIds);
+      this.db
+        .prepare(`UPDATE sessions SET updated_at = ? WHERE session_code = ?`)
+        .run(now, sessionCode);
+      return result.changes;
+    })();
   }
 
   /** 删除单个会话*/

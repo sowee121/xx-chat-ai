@@ -3,7 +3,7 @@
  */
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { Check, Minus, MoreHorizontal, PawPrint, SquarePen, Trash2 } from 'lucide-react'
+import { Check, MessageCirclePlus, Minus, MoreHorizontal, PawPrint, Trash2 } from 'lucide-react'
 
 import {
   AlertDialog,
@@ -158,7 +158,7 @@ export function AppSidebar() {
           <span className={styles.brandName}>XX Chat AI</span>
         </div>
         <Button variant="ghost" size="lg" className={styles.newBtn} onClick={handleNew}>
-          <SquarePen className={styles.newBtnIcon} />
+          <MessageCirclePlus className={styles.newBtnIcon} />
           新建对话
         </Button>
       </SidebarHeader>

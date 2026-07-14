@@ -35,6 +35,12 @@ export interface ChatMessage {
   role: Role
   content: string
   reasoning?: string
+  /** 本轮失败中文说明；与 content 分离 */
+  errorMessage?: string
+  /** 上游明细 `type: message` */
+  errorDetail?: string
+  /** 软状态提示（如已停止生成） */
+  statusMessage?: string
 }
 
 export interface SessionSummary {
@@ -49,8 +55,11 @@ export interface StoredMessage {
   id?: number
   role: Role
   content: string
-  /** 思考过程；历史回放展示用，不回传上游 */
+  /** 思考过程；打开历史时展示，不回传上游 */
   reasoning?: string
+  errorMessage?: string
+  errorDetail?: string
+  statusMessage?: string
   ts: number
 }
 

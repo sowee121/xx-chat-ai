@@ -36,7 +36,7 @@
 **修复**（2026-07-10 / 续）：
 
 1. `chat.ts` 记录 `hadReasoning`；`textToSave` 为空但有推理时落库占位符 `（本轮无正文输出）`（含 abort / error 路径）。
-2. `messages.reasoning` 列落库思考正文；历史 API / 前端回放 `ReasoningBlock`（默认折叠）；多轮请求不回传 reasoning。
+2. `messages.reasoning` 列落库思考正文；历史 API / 前端展示 `ReasoningBlock`（默认折叠）；多轮请求不回传 reasoning。
 
 **现象**
 
@@ -306,22 +306,24 @@
 
 ---
 
-### BUG-12 · Provider 建连失败仍已落库 user 【P2】✅ 已修复
+### BUG-12 · Provider 建连失败仍已落库 user 【P2】✅ 已修复（方案演进）
 
-**修复**（2026-07-14）：`catch` 路径若无任何 delta 且未落库 assistant，则 `deleteLastUserMessage` 回滚本轮 user。
+**修复**（2026-07-14）：初版无产出时 `deleteLastUserMessage` 防孤儿。  
+**演进**（方案 B）：改为**保留 user**，并落库失败 assistant（`error_message` / `error_detail` 与 `content` 分离），避免打开历史白屏；失败无正文回合不进多轮 LLM 上下文。
 
-**现象**
+**现象（历史）**
 
-- 先 `appendMessage(user)` 再开流；`create()` 失败留下孤儿 user。
+- 先 `appendMessage(user)` 再开流；`create()` 失败留下孤儿 user，或回滚后空会话白屏。
 
 **涉及文件**
 
-- `apps/server/src/routes/chat.ts`
-- `apps/server/src/store/sqlite.ts`、`history.ts`
+- `apps/server/src/routes/chat.ts`、`store/sqlite.ts`、`store/history.ts`
+- `apps/web/src/stores/chatStore.ts`、`MessageItem.tsx`
 
 **验收**
 
-- 故意错误 Key 发一条 → DB 无该轮孤儿 user
+- 故意错误 Key 发一条 → 历史有 user + 失败助手红条；再打开非白屏
+- 多轮下一条请求 body 不含「仅失败无正文」的 assistant
 
 ---
 

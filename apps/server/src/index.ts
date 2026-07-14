@@ -8,8 +8,23 @@ import { historyRoutes } from './routes/history.js';
 import { providerRoutes } from './routes/providers.js';
 
 const PORT = Number(process.env.XX_PORT ?? 3001);
+const isProd = process.env.NODE_ENV === 'production';
 
-const app = Fastify({ logger: true });
+const app = Fastify({
+  logger: isProd
+    ? true
+    : {
+        transport: {
+          target: 'pino-pretty',
+          options: {
+            colorize: true,
+            translateTime: 'SYS:yyyy-mm-dd HH:MM:ss.l',
+            ignore: 'pid,hostname',
+            singleLine: false,
+          },
+        },
+      },
+});
 
 /** 健康检查，供本地与部署探活 */
 app.get('/api/health', async () => {

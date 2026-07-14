@@ -35,7 +35,7 @@
 | URL 会话路由 `/` + `/chat/:sessionCode` | 会话分享鉴权、公开链接权限控制 |
 | 加载骨架屏（聊天区 + 历史列表） | — |
 | 会话 Keep-Alive + 内存消息缓存（切换免重复请求） | — |
-| 同会话同文案同模型 SSE 回放（不调大模型） | — |
+| 任意助手重新生成（截断该条及后续）；流式中防连点；编辑仍仅回填 | — |
 
 ---
 
@@ -47,7 +47,7 @@
 | 定位 | **全栈 AI 聊天** — React 前端 + Fastify 后端 + LLM 流式对话 |
 | 结构 | pnpm workspace：`apps/web` + `apps/server` |
 | 前端 | Vite 8 + React 19 + TypeScript 6 |
-| 后端 | Fastify 5 + TypeScript |
+| 后端 | Fastify 5 + TypeScript（本地 `pino-pretty` 多行日志；生产默认单行 JSON） |
 | SSE | `@microsoft/fetch-event-source` + AbortController |
 | 状态 | Zustand 5 + persist（`provider` / `model`） |
 | Markdown | Streamdown + `@streamdown/code` + `@streamdown/mermaid` + `@streamdown/math` + `@streamdown/cjk` |
@@ -132,7 +132,7 @@ pnpm add next-themes streamdown @streamdown/code @streamdown/mermaid @streamdown
 | --- | --- |
 | 侧栏 | `AppSidebar` + shadcn `Sidebar`（offcanvas，宽 `280px`）；顶部品牌（`PawPrint` 方标 +「XX Chat AI」`text-xl`）；「新建对话」；历史对话列表（`sessionsLoading` + `useDeferredSkeleton` 延时淡出）；标题行固定 `h-10` + 批量按钮占位槽；批量选择与删除；`TooltipProvider` 包裹（必须，否则白屏） |
 | 顶栏 | `ChatHeader`：左 `SidebarTrigger` + 新建对话；右 `ModelMenu` + `ProviderMenu` + `ModeToggle`（左右 `gap-2`） |
-| 空状态 | `HomeView`：居中标题 + `ChatComposer` + 快捷标签（含「深度思考示例」「图片示例」；暗门「模拟错误提示」） |
+| 空状态 | `HomeView`：居中标题 + `ChatComposer` + 快捷标签（含「图表示例」「深度思考示例」「图片示例」；暗门「模拟错误提示」） |
 | 用户消息 | 右对齐 `bg-muted` 圆角气泡（`h-12` 单行等价高度）；hover 显示编辑（回填输入框）+ 复制 |
 | AI 消息 | 全宽 `MarkdownMessage`（`leading-7`）；可选 `ReasoningBlock`（历史默认折叠；流式中自动展开；「正在思考」文案扫光） |
 | 流式错误 | `StreamErrorBanner`：红条 `w-fit max-w-full`；上行为大类中文，下行可选上游 `type: message` |
@@ -151,6 +151,7 @@ pnpm add next-themes streamdown @streamdown/code @streamdown/mermaid @streamdown
 | 项 | 做法 |
 | --- | --- |
 | 块级卡片圆角 | `.prose-message [data-streamdown=code-block\|mermaid-block\|table-wrapper\|image…]` → `--radius-lg` |
+| 表格卡片标题 | `table-wrapper` 工具栏 `::before` 补 `table`（对齐 Mermaid 左侧标题；Streamdown 原生无） |
 | 工具栏图标尺寸 | 统一 `button svg` → `1rem` |
 | 工具栏图标垂直居中 | `button:has(>svg)` + `div.relative:has(>button)` → `inline-flex` |
 | 工具按钮顺序 | 复制 → 下载 → 全屏（`code-block-copy-button { order: -1 }`） |
@@ -257,9 +258,8 @@ xx-chat-ai/
 │           │   ├── upstreamError.ts    # 上游错误归一化（中文 + detail）
 │           │   ├── thinkingParser.ts   # 流式思考标签 → reasoning/text
 │           │   ├── reasoningDelta.ts   # delta 多字段推理归一化
-│           │   ├── streamReplay.ts     # SSE delta 聚合与分片回放
-│           │   ├── streamIdle.ts       # 流式空闲超时（无产出则中止）
-│           │   └── resolveModel.ts
+│           │   ├── streamAggregate.ts  # SSE delta 聚合（落库）
+│           │   └── streamIdle.ts       # 流式空闲超时（无产出则中止）
 │           ├── prompts/
 │           │   └── systemPrompt.ts     # OpenAI 默认系统提示（Markdown/Mermaid 兼容约定）
 │           ├── providers/
@@ -305,13 +305,15 @@ xx-chat-ai/
 ```
 
 - `message`：面向用户的大类中文提示（鉴权 / 限流额度 / 参数 / 暂不可用等）。
-- `detail`：可选，上游 `type: message` 原文拼接；由 `StreamErrorBanner` 显示在中文下方。
+- `detail`：可选，上游 `type: message` 原文拼接；UI 挂在助手回合上（与库字段对齐）。
 
-**上游错误归一化**（`lib/upstreamError.ts`）：综合 HTTP status、`error.type`、英文关键字启发式分类；英文细节只进 `detail` 与服务端日志，不单独作为主文案透传。
+**失败落库（方案 B）**：业务错误 / 空闲超时 **保留 user**；写入 assistant，`content`/`reasoning` 仅存真实产出（可空），`error_message` / `error_detail` 存失败说明与上游明细。打开历史可见用户气泡 + 失败红条，不再白屏。用户主动停止且无产出：写入 `status_message`「已停止生成」（灰色提示，非错误红条）；有 partial 则只落 partial。
+
+**上游错误归一化**（`lib/upstreamError.ts`）：综合 HTTP status、`error.type`、英文关键字启发式分类；有有效上游字段时原样 `inspect`；英文细节进 `detail` 与日志，不作为主文案透传。
 
 **无效 `sessionCode`**（BUG-06）：客户端传入的 code 在库中不存在时，在进入 SSE 前返回 **HTTP 404** `{ error: '对话不存在或已删除' }`，**不会**用该 code 静默新建空会话；省略 `sessionCode` 时仍正常新建。
 
-**重复提问回放**（2026-07）：同 `sessionCode` + 相同 `query` + 相同 `provider`/`model` 命中缓存时，服务端回放已存 delta 序列（`pacedReplayStream`），不调用 LLM；缓存含完整 `reasoning`/`text` delta，回放会再现思考块；流结束后写入/更新 `stream_replay_cache`。
+**重新生成**（2026-07，截断版）：请求体带 `regenerate: true` + `keepMessageCount`（保留到触发 user 的条数），须带已有 `sessionCode`；服务端删除该位置及之后消息后重新拉取模型，**不再**追加 user。任意助手消息可点重生。流式进行中由前端 `isStreaming` 防连点。用户消息「编辑」仍仅回填输入框，不截断。
 
 **delta 载荷**（2026-07 扩展）：
 
@@ -355,7 +357,9 @@ xx-chat-ai/
 | 深度思考 / 思考示例 / reasoning | 先流式 `reasoning`，再 `text` 正文 |
 | 表格/对比/SSE/WebSocket | GFM 表格 |
 | 防抖/节流/代码/typescript | 代码块 |
-| mermaid/流程图 | Mermaid 图 |
+| mermaid/流程图/登录流程 | Mermaid 流程图 |
+| 图表示例 | Mermaid 流程图 + `xychart-beta` 数值图 |
+| xychart/数值图/柱状图/月度销售 | Mermaid `xychart-beta` 数值图 |
 | 图片 / 图片示例 | 示例图 Markdown |
 | 公式 / math | KaTeX 公式 |
 | 其他 | 多格式 showcase（表+码+图+Mermaid） |
@@ -426,7 +430,7 @@ cp apps/server/config.local.example.json apps/server/config.local.json
 
 - [x] 推理块分离：SSE `reasoning` / `text` + `ReasoningBlock` 折叠 UI
 - [x] `thinkingParser` + `reasoningDelta` 多厂商兼容（字段优先 + 标签兜底）
-- [x] 历史落库 `reasoning`；回放默认折叠；多轮上下文不回传推理
+- [x] 历史落库 `reasoning`；历史默认折叠；多轮上下文不回传推理
 - [x] KaTeX 数学（`@streamdown/math`）
 - [x] Mermaid `barChart` 自动转 `xychart-beta`
 - [x] 用户消息编辑回填；`ThreeDots` 共用三点动画 +「正在思考」扫光
@@ -602,11 +606,13 @@ flowchart LR
 
 **仍请求详情**：冷启动/刷新（内存清空）、首次打开某对话、LRU 淘汰后重进。
 
-#### 6.4 同文案 SSE 回放（服务端）
+#### 6.4 重新生成与流式防连点
 
-同一会话、相同用户文案、相同 `provider` + `model` 命中 `stream_replay_cache` 时，不调大模型，由 `pacedReplayStream` 分片延时回放历史 delta。
+- **重新生成**：任意助手操作栏「重新生成」→ `regenerate: true` + `keepMessageCount`；服务端截断该助手及后续消息后重拉模型，不追加 user（类 DeepSeek：线性截断、不保留旧分支）。
+- **编辑**：用户消息仍仅回填输入框，不截断会话。
+- **防连点**：前端 `isStreaming` 期间拦截 `send` / `regenerate`，并禁用输入发送与 Provider/模型切换。
 
-**涉及**：`apps/server/src/routes/chat.ts`、`lib/streamReplay.ts`、`store` 回放缓存表。
+**涉及**：`apps/server/src/routes/chat.ts`、`history`/`sqlite` `truncateMessagesAfter`、`chatStore`、`MessageItem`。
 
 #### 6.5 布局间距约定
 
@@ -626,7 +632,7 @@ flowchart LR
 - [x] 历史列表首屏骨架 10 条，标题行不抖动
 - [x] 切回已缓存会话不发起 `GET /api/history/:code`
 - [x] Keep-Alive 切换后图片/Markdown 不重载闪动
-- [x] 同文案重复提问走 SSE 回放（服务端）
+- [x] 重新生成不追加 user；按 keepMessageCount 截断后续；流式中防连点
 
 ---
 
@@ -644,6 +650,7 @@ pnpm dev
 - 后端：http://localhost:3001
 - 健康检查：`GET /api/health`
 - Provider 状态：`GET /api/providers`
+- 本地日志：非 `NODE_ENV=production` 时 Fastify 走 `pino-pretty`（彩色多行）；生产仍为单行 JSON
 
 ### 构建
 
@@ -670,7 +677,8 @@ pnpm build   # web + server
 | 首条发送 meta 前空白 | 乐观挂载 `PENDING_SESSION_CODE`（BUG-09） |
 | 仅推理轮次刷新前后不一致 | 前端 `onDone`/`stop` 对齐占位符（BUG-10） |
 | 过早停止空白助手行 | `stop`/无产出 `onError` 移除空 assistant（BUG-11） |
-| 建连失败孤儿 user | catch 无产出时 `deleteLastUserMessage`（BUG-12） |
+| 建连失败孤儿 user | 改为失败助手落库 `error_message`/`error_detail`，**保留 user**（方案 B） |
+| 失败后打开历史白屏 | 同上：至少有 user + 失败助手回合 |
 | 空闲超时上游仍挂 | idle 先 `abort()` 再抛错（BUG-13） |
 | 占位符进多轮上下文 | history 过滤 `REASONING_ONLY_PLACEHOLDER`（BUG-14） |
 | 切换会话消息区闪动 | Keep-Alive + `sessionMessagesCache` + 稳定 `msg-{id}` |

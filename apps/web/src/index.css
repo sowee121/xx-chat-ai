@@ -1,3 +1,4 @@
+/** 全局样式入口：主题、Streamdown 覆盖与聊天动效 */
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -210,6 +211,23 @@
    （代码块、Mermaid 原生为 下载 → 复制…；表格已正确，其复制按钮无此标识不受影响） */
 .prose-message [data-streamdown="code-block-copy-button"] {
   order: -1;
+}
+
+/* 表格卡片补标题：对齐 Mermaid 块左侧 `mermaid` 标题（Streamdown 表格原生无此行） */
+.prose-message [data-streamdown="table-wrapper"] > .flex.items-center.justify-end {
+  min-height: 2rem;
+}
+
+.prose-message [data-streamdown="table-wrapper"] > .flex.items-center.justify-end::before {
+  content: "table";
+  margin-right: auto;
+  margin-left: 0.25rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    "Courier New", monospace;
+  font-size: 0.75rem;
+  line-height: 1rem;
+  color: var(--muted-foreground);
+  text-transform: lowercase;
 }
 
 /* 图片可点击放大预览 */

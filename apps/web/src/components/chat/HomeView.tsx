@@ -6,11 +6,11 @@ import { styles } from './HomeView.styles'
 import { StreamErrorBanner } from './StreamErrorBanner'
 
 const SUGGESTIONS = [
-  'SSE 与 WebSocket 对比',
-  'JavaScript 防抖和节流函数',
-  '登录流程图',
-  '数学公式示例',
+  'SSE / WebSocket 对比',
+  '防抖和节流函数',
   '图片示例',
+  '图表示例',
+  '数学公式示例',
   '多格式演示',
   '深度思考示例',
 ] as const

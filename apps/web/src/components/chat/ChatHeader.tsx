@@ -1,7 +1,7 @@
 /**
  * 聊天顶栏：侧栏触发、新建、模型与 Provider、主题
  */
-import { SquarePen } from 'lucide-react'
+import { MessageCirclePlus } from 'lucide-react'
 
 import { useParams } from 'react-router-dom'
 
@@ -33,7 +33,7 @@ export function ChatHeader() {
           disabled={!canNewChat}
           onClick={goHome}
         >
-          <SquarePen className={styles.headerIcon} />
+          <MessageCirclePlus className={styles.headerIcon} />
         </Button>
       </div>
 

@@ -9,7 +9,7 @@ export const styles = {
   brandIcon: 'size-6 stroke-[2]',
   brandName: 'truncate text-xl font-semibold tracking-tight',
   newBtn:
-    'h-11 w-full justify-center gap-2.5 rounded-xl border-0 bg-background px-3 text-sm font-medium shadow-sm transition-[box-shadow,background-color] hover:bg-background hover:shadow-md active:shadow-sm',
+    'h-10 w-full justify-center gap-2.5 rounded-xl border-0 bg-background px-3 text-sm font-medium shadow-sm transition-[box-shadow,background-color] hover:bg-background hover:shadow-md active:shadow-sm',
   newBtnIcon: 'size-[1.125rem] shrink-0',
   content: 'min-h-0 flex-1 overflow-hidden pt-1 pb-1',
   group: 'flex min-h-0 flex-1 flex-col gap-1 p-0',

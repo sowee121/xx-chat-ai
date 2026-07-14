@@ -119,6 +119,91 @@ function fixSubgraphTitles(code: string): string {
 }
 
 /**
+ * 流程图节点括号/标签空白兼容：模型常写出 `[ [x]]`、`[[x] ]`、`( x )` 等非法形态
+ * 按「多字符定界符优先」依次归一，再对需引号的标签补引号
+ */
+export function fixFlowchartBracketSpaces(code: string): string {
+  const source = normalizeMermaidSource(code)
+  if (!/^(?:flowchart|graph)\b/im.test(source)) return source
+
+  /** 标签 trim；含空格/路径/中文等时补引号 */
+  const normalizeShapeLabel = (raw: string): string => {
+    const t = raw.trim()
+    if (!t) return t
+    if (isQuoted(t)) return t
+    if (needsMermaidQuotes(t)) return quoteLabel(t)
+    return t
+  }
+
+  /** 将捕获的标签写入标准节点形态 */
+  const wrap =
+    (open: string, close: string) =>
+    (label: string): string =>
+      `${open}${normalizeShapeLabel(label)}${close}`
+
+  /** 多字符形态优先，避免 `[ [` 被单层 `[]` 抢先匹配 */
+  const shapeRules: { re: RegExp; format: (label: string) => string }[] = [
+    // 子程序 [[x]]：[[ x ]]、[ [x]]、[[x] ]、[[x ]]
+    { re: /\[\s*\[\s*([^\]\n]*?)\s*\]\s*\]/g, format: wrap('[[', ']]') },
+    // 圆柱 [(x)]：[( x )]、[ (x)]
+    { re: /\[\s*\(\s*([^\]\n]*?)\s*\)\s*\]/g, format: wrap('[(', ')]') },
+    // 体育场 ([x])：([ x ])、( [x] )
+    { re: /\(\s*\[\s*([^\]\n]*?)\s*\]\s*\)/g, format: wrap('([', '])') },
+    // 圆形 ((x))：(( x ))、( (x) )
+    { re: /\(\s*\(\s*([^)\n]*?)\s*\)\s*\)/g, format: wrap('((', '))') },
+    // 六边形 {{x}}
+    { re: /\{\s*\{\s*([^}\n]*?)\s*\}\s*\}/g, format: wrap('{{', '}}') },
+    // 梯形 [/x/]、[\x\]
+    { re: /\[\s*\/\s*([^/\]\n]*?)\s*\/\s*\]/g, format: wrap('[/', '/]') },
+    { re: /\[\s*\\\s*([^\\\]\n]*?)\s*\\\s*\]/g, format: wrap('[\\', '\\]') },
+  ]
+
+  /** 跳过 style / classDef 等指令行，避免误伤 */
+  const isDirectiveLine = (line: string): boolean =>
+    /^\s*(?:style|classDef|class|linkStyle|click|direction|interpolate|%%)/i.test(line)
+
+  const fixLine = (line: string): string => {
+    if (isDirectiveLine(line)) return line
+
+    let next = line
+    for (const { re, format } of shapeRules) {
+      next = next.replace(re, (_, label: string) => format(label))
+    }
+
+    // 菱形 {x}：{ x }（排除 {{、指令行已跳过）
+    next = next.replace(/\{\s*([^}\n]*)\s*\}(?!\})/g, (match, label: string) => {
+      const t = label.trim()
+      if (!t) return match
+      if (label === t && !needsMermaidQuotes(t) && !isQuoted(t)) return match
+      return `{${normalizeShapeLabel(label)}}`
+    })
+
+    // 圆角 (x)：( x )（排除 ((、([）
+    next = next.replace(/\(\s*(?![\[(])([^)\n]*)\s*\)(?!\))/g, (match, label: string) => {
+      const t = label.trim()
+      if (!t) return match
+      if (label === t && !needsMermaidQuotes(t) && !isQuoted(t)) return match
+      return `(${normalizeShapeLabel(label)})`
+    })
+
+    // 矩形 [x]：[ x ]、[x ]（排除 [[、[(、[/、[\ 等其它形态）
+    next = next.replace(/\[(?!\[|\(|\/|\\)([^\]\n]*)\](?!\])/g, (match, label: string) => {
+      const t = label.trim()
+      if (!t) return match
+      if (label === t && !needsMermaidQuotes(t) && !isQuoted(t)) return match
+      return `[${normalizeShapeLabel(label)}]`
+    })
+
+    return next
+  }
+
+  return source
+    .split('\n')
+    .map((line) => fixLine(line))
+    .join('\n')
+}
+
+/**
  * 非法 `bar`/`line` + `series "名" [...]` → 合法 `bar [...]` / `line [...]`
  */
 export function convertInvalidXychartSeries(code: string): string | null {
@@ -279,6 +364,7 @@ export function prepareMermaidSource(code: string): string {
   source = fixPieFullwidthColons(source)
   source = fixXychartBetaSyntax(source)
   source = fixSubgraphTitles(source)
+  source = fixFlowchartBracketSpaces(source)
   source = sanitizeMermaidBlock(source)
 
   return source
@@ -291,10 +377,12 @@ export function buildMermaidRenderAttempts(code: string): string[] {
   const aggressive = sanitizeMermaidBlockAggressive(prepared)
   const seriesOnly = convertInvalidXychartSeries(normalized)
   const barOnly = convertInvalidBarChart(normalized)
+  const bracketsOnly = fixFlowchartBracketSpaces(normalized)
 
   const attempts = [
     prepared,
     normalized,
+    bracketsOnly,
     fixSequenceDiagramColons(normalized),
     fixXychartBetaSyntax(normalized),
     ...(seriesOnly ? [seriesOnly] : []),

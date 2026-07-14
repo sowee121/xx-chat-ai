@@ -72,21 +72,77 @@ function tableAnswer(q: string): string[] {
   ];
 }
 
+/** 登录流程图示例块 */
+const LOGIN_FLOW_MERMAID_LINES = [
+  'graph TD',
+  '  A([开始]) --> B["输入账号密码 / 验证码 / 第三方授权"]',
+  '  B --> C{校验表单}',
+  '  C -->|不通过| B',
+  '  C -->|通过| D[提交后端]',
+  '  D --> E{凭证正确?}',
+  '  E -->|否| F[提示错误] --> B',
+  '  E -->|是| G[签发 Token] --> H[进入首页]',
+] as const;
+
 /** Mock：流程图意图回复*/
 function mermaidAnswer(q: string): string[] {
   return [
     `这是「${q}」的流程图：`,
     '',
     '```mermaid',
-    'graph TD',
-    '  A([开始]) --> B["输入账号密码 / 验证码 / 第三方授权"]',
-    '  B --> C{校验表单}',
-    '  C -->|不通过| B',
-    '  C -->|通过| D[提交后端]',
-    '  D --> E{凭证正确?}',
-    '  E -->|否| F[提示错误] --> B',
-    '  E -->|是| G[签发 Token] --> H[进入首页]',
+    ...LOGIN_FLOW_MERMAID_LINES,
     '```',
+    '',
+    '点击图表右上角按钮可放大查看。',
+  ];
+}
+
+/** 标准 xychart-beta 示例块（与 systemPrompt 约定一致） */
+const XYCHART_MERMAID_LINES = [
+  'xychart-beta',
+  '    title "某产品月度销售额"',
+  '    x-axis [1月, 2月, 3月]',
+  '    y-axis "销售额 (万元)" 0 --> 4000',
+  '    bar [1200, 1320, 1540]',
+  '    bar [1800, 1750, 1680]',
+  '    bar [2500, 2680, 3720]',
+] as const;
+
+/** Mock：图表示例（流程图 + 数值图） */
+function chartExamplesAnswer(q: string): string[] {
+  return [
+    `## 图表示例`,
+    '',
+    `关于「${q}」，下面是两种常用 Mermaid 图表的标准写法：`,
+    '',
+    '### 流程图（graph TD）',
+    '',
+    '```mermaid',
+    ...LOGIN_FLOW_MERMAID_LINES,
+    '```',
+    '',
+    '### 数值图（xychart-beta）',
+    '',
+    '```mermaid',
+    ...XYCHART_MERMAID_LINES,
+    '```',
+    '',
+    '数值图每个 `bar […]` 为一组系列，数组长度须与 `x-axis` 类别数一致；勿使用 `barChart`、`xAxis`、`series` 等自创关键字。',
+    '',
+    '点击图表右上角按钮可放大查看。',
+  ];
+}
+
+/** Mock：数值图（xychart-beta）意图回复 */
+function xychartAnswer(q: string): string[] {
+  return [
+    `这是「${q}」的数值图示例（标准 \`xychart-beta\`）：`,
+    '',
+    '```mermaid',
+    ...XYCHART_MERMAID_LINES,
+    '```',
+    '',
+    '每个 `bar […]` 为一组系列，数组长度须与 `x-axis` 类别数一致；勿使用 `barChart`、`xAxis`、`series` 等自创关键字。',
     '',
     '点击图表右上角按钮可放大查看。',
   ];
@@ -162,6 +218,12 @@ function showcaseAnswer(q: string): string[] {
     '  D --> E',
     '```',
     '',
+    '### Mermaid 数值图（xychart-beta）',
+    '',
+    '```mermaid',
+    ...XYCHART_MERMAID_LINES,
+    '```',
+    '',
     '### 数学公式',
     '',
     '行内：$\\sum_{i=1}^{n} i = \\frac{n(n+1)}{2}$',
@@ -172,7 +234,7 @@ function showcaseAnswer(q: string): string[] {
     'E = mc^2',
     '$$',
     '',
-    '试试问我「对比 SSE 与 WebSocket」「写一个防抖函数」「画个登录流程图」或「数学公式示例」。',
+    '试试问我「对比 SSE 与 WebSocket」「写一个防抖函数」「图表示例」或「数学公式示例」。',
   ];
 }
 
@@ -207,6 +269,8 @@ function buildMockMarkdown(query: string): string {
   const q = query.trim() || '你的问题';
   const lower = q.toLowerCase();
 
+  const wantsChartExamples = /图表示例/.test(q);
+  const wantsXychart = /xychart|数值图|柱状图|折线图|月度销售|销售占比|销售数据/.test(q);
   const wantsMermaid = /mermaid|流程图|时序图|流程|图表/.test(q);
   const wantsMath = /公式|latex|math|积分|求导|方程|质能|欧拉/.test(lower);
   const wantsCode = /防抖|节流|debounce|throttle|函数|代码|typescript|javascript|\bts\b|\bjs\b/.test(lower);
@@ -214,7 +278,9 @@ function buildMockMarkdown(query: string): string {
   const wantsImage = /图片|示例图|插入.*图|photo|image/.test(lower);
 
   let lines: string[];
-  if (wantsMermaid) lines = mermaidAnswer(q);
+  if (wantsChartExamples) lines = chartExamplesAnswer(q);
+  else if (wantsXychart) lines = xychartAnswer(q);
+  else if (wantsMermaid) lines = mermaidAnswer(q);
   else if (wantsMath) lines = mathAnswer(q);
   else if (wantsCode) lines = codeAnswer(q);
   else if (wantsTable) lines = tableAnswer(q);

@@ -31,7 +31,7 @@ lib/
 
 - `ChatStream` 产出 `StreamChunk { type: 'reasoning' | 'text', content: string }`，勿改回裸 `string`。
 - `openai.ts`：先 `extractReasoningFromDelta`，再对 `content` 走 `ThinkingStreamParser`；`finally` 中 `flush()`。
-- 历史 `appendMessage` 只存 `text`；落库前 `stripThinkingTags()`。
+- 历史 `appendMessage`：`content` 仅真实正文（落库前 `stripThinkingTags()`）；失败用 `error_message` / `error_detail`，勿把错误塞进 content。
 - 系统提示：Mermaid 数值图用 `xychart-beta`，禁止 `barChart`。
 
 ## 配置
@@ -47,11 +47,12 @@ lib/
 event: meta   data: { sessionCode, title }
 event: delta  data: { type: 'reasoning' | 'text', content: string }
 event: done   data: { sessionCode, finishReason }
-event: error  data: { message: string }
+event: error  data: { message: string, detail?: string }
 ```
 
 - 缺省 `type` 时前端按 `text` 处理（向后兼容）。
-- 多轮 `messages` 仅含 `content` 正文，不含 `reasoning`。
+- 多轮 `messages` 仅含 `content` 正文，不含 `reasoning` / 失败字段。
+- 业务错误保留 user，并落库失败 assistant（可无 content）。
 
 ## 注意
 

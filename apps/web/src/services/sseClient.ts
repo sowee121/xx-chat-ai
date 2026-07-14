@@ -25,6 +25,10 @@ export interface StreamParams {
   model?: string
   messages: { role: Role; content: string }[]
   signal: AbortSignal
+  /** 重新生成：服务端按 keepMessageCount 截断后续后重拉，不追加 user */
+  regenerate?: boolean
+  /** 保留的消息条数（含触发重生前那条 user）；与前端截断对齐 */
+  keepMessageCount?: number
 }
 
 /** 打开阶段的致命错误（非 SSE 响应 / 4xx）——不重试*/

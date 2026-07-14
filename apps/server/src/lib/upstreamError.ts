@@ -3,6 +3,7 @@
  * 综合 status、error.type、英文关键字启发式分类（跨供应商非精确契约）。
  */
 import OpenAI from 'openai';
+import { inspect } from 'node:util';
 
 export type UpstreamErrorContext = {
   model?: string;
@@ -177,6 +178,14 @@ export function formatUpstreamDetail(type?: string, message?: string): string | 
 
 type OpenaiApiError = InstanceType<typeof OpenAI.APIError>;
 
+/** SDK / 本地 abort，无 HTTP 错误体 */
+function isAbortLikeError(err: unknown): boolean {
+  if (err instanceof OpenAI.APIUserAbortError) return true;
+  if (!(err instanceof Error)) return false;
+  if (err.name === 'AbortError' || err.name === 'APIUserAbortError') return true;
+  return /request was aborted/i.test(err.message);
+}
+
 /** 从 OpenAI SDK / 兼容错误中尽量取出 type 字段 */
 function extractUpstreamType(err: OpenaiApiError): string | undefined {
   const anyErr = err as OpenaiApiError & {
@@ -197,29 +206,64 @@ function extractUpstreamMessage(err: OpenaiApiError): string | undefined {
   return err.message?.trim() || undefined;
 }
 
-/** 记录上游原始错误，便于排障 */
-function logUpstreamError(err: OpenaiApiError, ctx?: UpstreamErrorContext): void {
+/** SDK 错误上这些上游字段是否至少有一个有值 */
+function hasUsefulUpstreamFields(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const e = err as Record<string, unknown>;
+  return ['status', 'headers', 'requestID', 'error', 'code', 'param', 'type'].some(
+    (k) => e[k] !== undefined && e[k] !== null,
+  );
+}
+
+/** 有有效上游字段时才原样打印；全是 undefined 则跳过（如 APIUserAbortError） */
+function logRawUpstream(err: unknown, ctx?: UpstreamErrorContext): void {
+  const body =
+    err && typeof err === 'object' && 'error' in err
+      ? (err as { error?: unknown }).error
+      : undefined;
+
+  if (!hasUsefulUpstreamFields(err) && body === undefined) return;
+
   const source = ctx?.source ?? 'upstream';
-  console.error(`[${source}]`, {
-    status: err.status,
-    type: extractUpstreamType(err),
-    message: extractUpstreamMessage(err),
-    model: ctx?.model,
-  });
+  console.error(
+    `[${source}] raw error\n${inspect(err, {
+      depth: 8,
+      colors: false,
+      getters: true,
+      showHidden: false,
+    })}`,
+  );
+
+  if (body !== undefined) {
+    console.error(`[${source}] upstream body\n${JSON.stringify(body, null, 2)}`);
+  }
+
+  if (ctx?.model) {
+    console.error(`[${source}] model: ${ctx.model}`);
+  }
 }
 
 /**
- * 将上游 SDK 错误转为 UpstreamUserError；保留 AbortError；
- * 原始 status/message 写入日志与 Error.cause。
+ * 将上游 SDK 错误转为 UpstreamUserError；中止类原样返回；
+ * 真实 HTTP 错误写入全量日志与 Error.cause。
  */
 export function normalizeUpstreamError(
   err: unknown,
   ctx?: UpstreamErrorContext,
 ): Error {
-  if (err instanceof Error && err.name === 'AbortError') return err;
+  if (isAbortLikeError(err)) {
+    const abortErr = err instanceof Error ? err : new Error(String(err));
+    logRawUpstream(abortErr, ctx);
+    // 统一成 AbortError，便于上层按「用户/超时中止」处理
+    if (abortErr.name === 'AbortError') return abortErr;
+    const normalized = new Error(abortErr.message);
+    normalized.name = 'AbortError';
+    normalized.cause = abortErr;
+    return normalized;
+  }
 
   if (err instanceof OpenAI.APIError) {
-    logUpstreamError(err, ctx);
+    logRawUpstream(err, ctx);
     const type = extractUpstreamType(err);
     const rawMessage = extractUpstreamMessage(err);
     return new UpstreamUserError(
