@@ -1,5 +1,5 @@
 /**
- * MessageList 样式类名。
+ * MessageList 样式类名
  */
 export const styles = {
   wrap: 'absolute inset-0',
@@ -10,7 +10,9 @@ export const styles = {
   gutter: 'px-4 sm:px-6',
   column: 'mx-auto flex w-full max-w-3xl flex-col gap-6 py-6',
   bottomSpacer: 'h-[var(--chat-composer-pad,5.5rem)] shrink-0',
-  error: 'border-destructive/30 bg-destructive/10 text-destructive rounded-xl border px-4 py-3 text-sm',
+  error:
+    'border-destructive/30 bg-destructive/10 text-destructive w-fit max-w-full rounded-xl border px-4 py-3 text-sm',
+  errorDetail: 'mt-1.5 break-all font-mono text-xs opacity-80',
   scrollLoading: 'opacity-0',
   scrollReady: 'opacity-100 transition-opacity duration-[400ms] ease-in-out motion-reduce:transition-none',
 } as const

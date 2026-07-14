@@ -1,5 +1,5 @@
 /**
- * shadcn Skeleton 原语。
+ * shadcn Skeleton 原语
  */
 import { cn } from "@/lib/utils"
 

@@ -1,5 +1,5 @@
 /**
- * shadcn Sidebar 原语（侧栏布局与移动端抽屉）。
+ * shadcn Sidebar 原语（侧栏布局与移动端抽屉）
  */
 "use client"
 
@@ -34,7 +34,7 @@ const SIDEBAR_WIDTH = "280px"
  * 移动端抽屉宽度：
  * - 下限不低于 320px（与页面 min-width 一致），避免极窄视口把文案压成竖排
  * - 大屏不超过 360px；右侧留出遮罩便于关闭
- * - 需用 data-[side=*]:w-* 覆盖 Sheet 默认 w-3/4（更高特异性）
+ * - 需用 data-[side=*]:w-* 覆盖 Sheet 默认 w-3/4
  */
 const SIDEBAR_WIDTH_MOBILE = "max(320px, min(360px, calc(100vw - 40px)))"
 const SIDEBAR_WIDTH_ICON = "3rem"

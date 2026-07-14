@@ -1,5 +1,5 @@
 /**
- * shadcn ScrollArea 原语。
+ * shadcn ScrollArea 原语
  */
 import * as React from "react"
 import { ScrollArea as ScrollAreaPrimitive } from "radix-ui"

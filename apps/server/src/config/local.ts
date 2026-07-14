@@ -1,5 +1,5 @@
 /**
- * 读取本地配置（环境变量优先于 config.local.json）。
+ * 读取本地配置（环境变量优先于 config.local.json）
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -21,6 +21,7 @@ const CONFIG_PATH = resolve(process.cwd(), 'config.local.json');
 
 let cached: LocalConfigFile | null | undefined;
 
+/** 读取 config.local.json*/
 function loadFile(): LocalConfigFile | null {
   if (cached !== undefined) return cached;
   if (!existsSync(CONFIG_PATH)) {
@@ -36,11 +37,12 @@ function loadFile(): LocalConfigFile | null {
   }
 }
 
-/** 读取本地私有配置（config.local.json，已 gitignore，不进仓库）。 */
+/** 读取本地私有配置（config.local.json，已 gitignore，不进仓库）*/
 export function getLocalConfig(): LocalConfigFile | null {
   return loadFile();
 }
 
+/** 读取 OpenAI 凭据与端点配置*/
 export function getOpenaiCredentials(): {
   apiKey?: string;
   baseURL?: string;
@@ -57,6 +59,7 @@ export function getOpenaiCredentials(): {
   };
 }
 
+/** 读取配置的默认 Provider*/
 export function getConfiguredDefaultProvider(): Provider | undefined {
   const env = process.env.XX_DEFAULT_PROVIDER as Provider | undefined;
   if (env === 'mock' || env === 'openai') return env;
@@ -67,7 +70,7 @@ export function getConfiguredDefaultProvider(): Provider | undefined {
   return undefined;
 }
 
-/** 热重载配置（开发时改 config.local.json 后可用）。 */
+/** 热重载配置（开发时改 config.local.json 后可用）*/
 export function reloadLocalConfig(): void {
   cached = undefined;
 }

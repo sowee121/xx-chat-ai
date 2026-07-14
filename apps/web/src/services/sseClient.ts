@@ -1,5 +1,5 @@
 /**
- * SSE 客户端：fetch-event-source 封装 meta/delta/done/error。
+ * SSE 客户端：fetch-event-source 封装 meta/delta/done/error
  */
 import { fetchEventSource } from '@microsoft/fetch-event-source'
 import type { Provider, Role, StreamDelta } from '@/lib/chat-types'
@@ -14,7 +14,8 @@ export interface StreamCallbacks {
   onMeta?: (meta: StreamMeta) => void
   onDelta: (delta: StreamDelta) => void
   onDone?: (info: { sessionCode: string; finishReason: string }) => void
-  onError?: (message: string) => void
+  /** message 为中文主文案；detail 为上游 `type: message`（可选） */
+  onError?: (message: string, detail?: string) => void
 }
 
 export interface StreamParams {
@@ -26,18 +27,31 @@ export interface StreamParams {
   signal: AbortSignal
 }
 
-/** 打开阶段的致命错误（非 SSE 响应 / 4xx）——不重试。 */
+/** 打开阶段的致命错误（非 SSE 响应 / 4xx）——不重试*/
 class FatalError extends Error {}
 
+/** 判断是否为 AbortError*/
 function isAbortError(err: unknown): boolean {
   return err instanceof DOMException && err.name === 'AbortError'
 }
 
+/** 安全解析 SSE data；失败返回 null */
+function safeParse<T>(data: string): T | null {
+  try {
+    return JSON.parse(data) as T
+  } catch {
+    if (import.meta.env.DEV) {
+      console.warn('[sseClient] invalid SSE JSON payload:', data)
+    }
+    return null
+  }
+}
+
 /**
- * 通过 @microsoft/fetch-event-source 建立 SSE 流。
- * 事件协议：meta / delta / done / error（与后端 routes/chat.ts 对应）。
- * 收到 done/error 后主动 abort，避免 fetch-event-source 断线自动重连。
- * 空闲超时：OpenAI 等真实 provider 超过 STREAM_IDLE_TIMEOUT_MS 无 SSE 事件则中止；Mock 不启用。
+ * 通过 @microsoft/fetch-event-source 建立 SSE 流
+ * 事件协议：meta / delta / done / error（与后端 routes/chat.ts 对应）
+ * 收到 done/error 后主动 abort，避免 fetch-event-source 断线自动重连
+ * 空闲超时：OpenAI 等真实 provider 超过 STREAM_IDLE_TIMEOUT_MS 无 SSE 事件则中止；Mock 不启用
  */
 export async function streamChat(params: StreamParams, cb: StreamCallbacks): Promise<void> {
   const { signal, ...body } = params
@@ -49,6 +63,7 @@ export async function streamChat(params: StreamParams, cb: StreamCallbacks): Pro
   else signal.addEventListener('abort', forwardAbort, { once: true })
 
   let idleTimedOut = false
+  let parseFailed = false
   let idleTimer: ReturnType<typeof setTimeout> | null = null
 
   const clearIdle = () => {
@@ -68,6 +83,13 @@ export async function streamChat(params: StreamParams, cb: StreamCallbacks): Pro
     }, STREAM_IDLE_TIMEOUT_MS)
   }
 
+  const failParse = () => {
+    parseFailed = true
+    clearIdle()
+    cb.onError?.('流式数据解析失败')
+    ctrl.abort()
+  }
+
   bumpIdle()
 
   try {
@@ -82,31 +104,61 @@ export async function streamChat(params: StreamParams, cb: StreamCallbacks): Pro
         const ct = res.headers.get('content-type') ?? ''
         if (res.ok && ct.includes('text/event-stream')) return
         const text = await res.text().catch(() => '')
-        throw new FatalError(`请求失败 (${res.status})${text ? `：${text}` : ''}`)
+        let message = `请求失败 (${res.status})`
+        if (text) {
+          const parsed = safeParse<{ error?: string; message?: string }>(text)
+          if (parsed?.error || parsed?.message) {
+            message = parsed.error ?? parsed.message ?? message
+          } else {
+            message = `${message}：${text}`
+          }
+        }
+        throw new FatalError(message)
       },
       onmessage(ev) {
         if (!ev.event || !ev.data) return
         bumpIdle()
         switch (ev.event) {
-          case 'meta':
-            cb.onMeta?.(JSON.parse(ev.data))
+          case 'meta': {
+            const meta = safeParse<StreamMeta>(ev.data)
+            if (!meta) {
+              failParse()
+              return
+            }
+            cb.onMeta?.(meta)
             break
+          }
           case 'delta': {
-            const parsed = JSON.parse(ev.data) as Partial<StreamDelta> & { content?: string }
+            const parsed = safeParse<Partial<StreamDelta> & { content?: string }>(ev.data)
+            if (!parsed) {
+              failParse()
+              return
+            }
             const type = parsed.type === 'reasoning' ? 'reasoning' : 'text'
             if (parsed.content) cb.onDelta({ type, content: parsed.content })
             break
           }
-          case 'done':
+          case 'done': {
+            const done = safeParse<{ sessionCode: string; finishReason: string }>(ev.data)
+            if (!done) {
+              failParse()
+              return
+            }
             clearIdle()
-            cb.onDone?.(JSON.parse(ev.data))
+            cb.onDone?.(done)
             ctrl.abort()
             break
-          case 'error':
+          }
+          case 'error': {
+            const payload = safeParse<{ message?: string; detail?: string }>(ev.data)
             clearIdle()
-            cb.onError?.(JSON.parse(ev.data).message ?? '生成出错')
+            // error 事件解析失败时仍给明确文案，避免落到「网络错误」
+            const message = payload?.message ?? (payload ? '生成出错' : '流式数据解析失败')
+            const detail = payload?.detail?.trim() || undefined
+            cb.onError?.(message, detail)
             ctrl.abort()
             break
+          }
         }
       },
       onerror(err) {
@@ -115,8 +167,8 @@ export async function streamChat(params: StreamParams, cb: StreamCallbacks): Pro
       },
     })
   } catch (err) {
-    // 空闲超时已通过 onError 通知
-    if (idleTimedOut) return
+    // 空闲超时 / 解析失败已通过 onError 通知
+    if (idleTimedOut || parseFailed) return
     // 正常结束（done 后 abort）或用户主动停止
     if (isAbortError(err)) return
     cb.onError?.(err instanceof Error ? err.message : '网络错误')

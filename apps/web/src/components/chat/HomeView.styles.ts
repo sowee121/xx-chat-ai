@@ -1,5 +1,5 @@
 /**
- * HomeView 样式类名。
+ * HomeView 样式类名
  */
 export const styles = {
   wrap: 'h-full px-4 sm:px-6',

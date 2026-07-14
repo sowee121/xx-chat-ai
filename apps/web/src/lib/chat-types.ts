@@ -1,5 +1,5 @@
 /**
- * 前端聊天领域类型（消息、会话、Provider）。
+ * 前端聊天领域类型（消息、会话、Provider）
  */
 export type Provider = 'mock' | 'openai'
 

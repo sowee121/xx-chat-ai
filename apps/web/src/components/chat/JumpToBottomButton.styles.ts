@@ -1,5 +1,5 @@
 /**
- * JumpToBottomButton 样式类名。
+ * JumpToBottomButton 样式类名
  */
 export const styles = {
   wrap: 'absolute bottom-[calc(var(--chat-composer-pad,5.5rem)+0.5rem)] left-1/2 z-30 size-9 -translate-x-1/2 transition-all duration-200 ease-out motion-reduce:transition-none',

@@ -1,5 +1,5 @@
 /**
- * ChatComposer 样式类名。
+ * ChatComposer 样式类名
  */
 export const styles = {
   wrap: 'mx-auto w-full max-w-3xl',

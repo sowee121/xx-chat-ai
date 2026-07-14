@@ -1,9 +1,10 @@
 /**
- * 历史对话 CRUD：列表、详情、删除与批量删除。
+ * 历史对话 CRUD：列表、详情、删除与批量删除
  */
 import type { FastifyInstance } from 'fastify';
 import { historyStore } from '../store/sqlite.js';
 
+/** 注册历史会话路由*/
 export async function historyRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/history', async () => {
     return { sessions: historyStore.listSessions() };
@@ -22,8 +23,11 @@ export async function historyRoutes(app: FastifyInstance): Promise<void> {
 
   app.delete<{ Params: { sessionCode: string } }>(
     '/api/history/:sessionCode',
-    async (request) => {
-      historyStore.deleteSession(request.params.sessionCode);
+    async (request, reply) => {
+      const deleted = historyStore.deleteSession(request.params.sessionCode);
+      if (!deleted) {
+        return reply.code(404).send({ error: '对话不存在或已删除' });
+      }
       return { ok: true };
     },
   );
@@ -38,8 +42,11 @@ export async function historyRoutes(app: FastifyInstance): Promise<void> {
       if (!sessionCodes.every((c) => typeof c === 'string' && c.length > 0)) {
         return reply.code(400).send({ error: 'invalid sessionCodes' });
       }
-      historyStore.deleteSessions(sessionCodes);
-      return { ok: true, deleted: sessionCodes.length };
+      const deleted = historyStore.deleteSessions(sessionCodes);
+      if (deleted === 0) {
+        return reply.code(404).send({ error: '对话不存在或已删除' });
+      }
+      return { ok: true, deleted };
     },
   );
 }

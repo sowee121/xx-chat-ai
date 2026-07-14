@@ -1,5 +1,5 @@
 /**
- * 主题切换按钮样式类名。
+ * 主题切换按钮样式类名
  */
 export const styles = {
   sun: 'scale-100 rotate-0 transition-all dark:scale-0 dark:-rotate-90',

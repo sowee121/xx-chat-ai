@@ -1,5 +1,5 @@
 /**
- * 聊天主布局：侧栏、顶栏、消息区、输入区与会话面板 Keep-Alive。
+ * 聊天主布局：侧栏、顶栏、消息区、输入区与会话面板 Keep-Alive
  */
 import { useEffect, useRef } from 'react'
 import { useParams } from 'react-router-dom'
@@ -10,6 +10,7 @@ import { ChatHeader } from '@/components/chat/ChatHeader'
 import { HomeView } from '@/components/chat/HomeView'
 import { MessageList } from '@/components/chat/MessageList'
 import { MessageContentShell } from '@/components/chat/MessageContentShell'
+import { AppToast } from '@/components/ui/app-toast'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useContentShellVisible } from '@/hooks/useContentShellVisible'
@@ -17,6 +18,7 @@ import { useSyncSessionRoute } from '@/hooks/useSyncSessionRoute'
 import { useChatStore } from '@/stores/chatStore'
 import { styles } from '@/App.styles'
 
+/** 聊天主布局*/
 export function ChatLayout() {
   useSyncSessionRoute()
 
@@ -72,6 +74,7 @@ export function ChatLayout() {
             </div>
           </main>
         </SidebarInset>
+        <AppToast />
       </SidebarProvider>
     </TooltipProvider>
   )

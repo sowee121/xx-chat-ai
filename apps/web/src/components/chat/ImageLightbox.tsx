@@ -1,5 +1,5 @@
 /**
- * 图片全屏预览：缩放、拖拽、键盘与点背景关闭。
+ * 图片全屏预览：缩放、拖拽、键盘与点背景关闭
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -20,10 +20,12 @@ const MAX_SCALE = 5
 const SCALE_STEP = 0.25
 const DEFAULT_SCALE = 1
 
+/** 限制灯箱缩放比例*/
 function clampScale(value: number) {
   return Math.min(MAX_SCALE, Math.max(MIN_SCALE, Math.round(value * 100) / 100))
 }
 
+/** 图片全屏预览灯箱*/
 export function ImageLightbox({ src, alt, onClose }: ImageLightboxProps) {
   const [scale, setScale] = useState(DEFAULT_SCALE)
   const [offset, setOffset] = useState({ x: 0, y: 0 })
@@ -64,10 +66,34 @@ export function ImageLightbox({ src, alt, onClose }: ImageLightboxProps) {
         resetView()
       }
     }
+
+    // 禁用浏览器捏合 / Ctrl+滚轮页面缩放；触控板捏合改为预览内缩放
+    const preventBrowserZoom = (e: Event) => {
+      e.preventDefault()
+    }
+    const onDocWheel = (e: WheelEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return
+      e.preventDefault()
+      zoomBy(e.deltaY < 0 ? SCALE_STEP : -SCALE_STEP)
+    }
+    const preventMultiTouch = (e: TouchEvent) => {
+      if (e.touches.length > 1) e.preventDefault()
+    }
+
     document.addEventListener('keydown', onKey)
+    document.addEventListener('gesturestart', preventBrowserZoom, { passive: false })
+    document.addEventListener('gesturechange', preventBrowserZoom, { passive: false })
+    document.addEventListener('gestureend', preventBrowserZoom, { passive: false })
+    document.addEventListener('wheel', onDocWheel, { passive: false })
+    document.addEventListener('touchmove', preventMultiTouch, { passive: false })
     document.body.style.overflow = 'hidden'
     return () => {
       document.removeEventListener('keydown', onKey)
+      document.removeEventListener('gesturestart', preventBrowserZoom)
+      document.removeEventListener('gesturechange', preventBrowserZoom)
+      document.removeEventListener('gestureend', preventBrowserZoom)
+      document.removeEventListener('wheel', onDocWheel)
+      document.removeEventListener('touchmove', preventMultiTouch)
       document.body.style.overflow = ''
     }
   }, [onClose, resetView, zoomBy])

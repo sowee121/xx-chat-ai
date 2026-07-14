@@ -1,10 +1,12 @@
 /**
- * 聊天全局状态：SSE 发送、会话缓存、Keep-Alive 与 Provider/模型。
+ * 聊天全局状态：SSE 发送、会话缓存、Keep-Alive 与 Provider/模型
  */
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { ChatMessage, Provider, ProviderInfo, SessionSummary, StoredMessage } from '@/lib/chat-types'
-import { STREAM_IDLE_TIMEOUT_MESSAGE } from '@/lib/streamIdle'
+import { isPendingSessionCode, PENDING_SESSION_CODE } from '@/lib/pendingSession'
+import { REASONING_ONLY_PLACEHOLDER } from '@/lib/reasoningPlaceholder'
+import { isSessionGoneMessage } from '@/lib/sessionGone'
 import { streamChat } from '@/services/sseClient'
 import {
   deleteSession as deleteSessionApi,
@@ -13,7 +15,9 @@ import {
   fetchSessions,
 } from '@/services/historyApi'
 import { fetchOpenaiModels, fetchProviders } from '@/services/providerApi'
+import { showToast } from '@/stores/toastStore'
 
+/** 生成前端临时消息 id*/
 function uid(): string {
   return typeof crypto !== 'undefined' && 'randomUUID' in crypto
     ? crypto.randomUUID()
@@ -35,6 +39,7 @@ const loadModelsOnce = { current: null as Promise<void> | null }
 /** 同一 sessionCode 详情请求去重（Strict Mode 双 effect） */
 const sessionDetailInflight = new Map<string, Promise<Awaited<ReturnType<typeof fetchSession>>>>()
 
+/** 同一会话详情请求去重*/
 function fetchSessionDeduped(sessionCode: string) {
   const existing = sessionDetailInflight.get(sessionCode)
   if (existing) return existing
@@ -63,10 +68,12 @@ function toChatMessages(stored: StoredMessage[]): ChatMessage[] {
   }))
 }
 
+/** 深拷贝消息列表快照*/
 function snapshotMessages(messages: ChatMessage[]): ChatMessage[] {
   return messages.map((m) => ({ ...m }))
 }
 
+/** 比较两批消息内容是否一致*/
 function messagesEqual(a: ChatMessage[], b: ChatMessage[]): boolean {
   if (a.length !== b.length) return false
   return a.every(
@@ -78,14 +85,19 @@ function messagesEqual(a: ChatMessage[], b: ChatMessage[]): boolean {
   )
 }
 
+/** 将会话消息写入内存缓存*/
 function syncSessionCache(sessionCode: string, messages: ChatMessage[]) {
+  if (isPendingSessionCode(sessionCode)) return
   sessionMessagesCache.set(sessionCode, snapshotMessages(messages))
 }
 
+/** 丢弃指定会话的消息缓存*/
 function dropSessionCache(sessionCode: string) {
+  if (isPendingSessionCode(sessionCode)) return
   sessionMessagesCache.delete(sessionCode)
 }
 
+/** 读取会话消息缓存*/
 export function getCachedSessionMessages(sessionCode: string): ChatMessage[] | undefined {
   return sessionMessagesCache.get(sessionCode)
 }
@@ -111,7 +123,9 @@ function mountSessionCode(get: ChatStoreGet, set: ChatStoreSet, sessionCode: str
 
   const evicted: string[] = []
   while (mounted.length > MAX_MOUNTED_SESSIONS) {
-    const victim = mounted.find((c) => c !== sessionCode && c !== activeCode)
+    const victim = mounted.find(
+      (c) => c !== sessionCode && c !== activeCode && !isPendingSessionCode(c),
+    )
     if (!victim) break
     evicted.push(victim)
     mounted = mounted.filter((c) => c !== victim)
@@ -119,6 +133,23 @@ function mountSessionCode(get: ChatStoreGet, set: ChatStoreSet, sessionCode: str
 
   for (const code of evicted) dropSessionCache(code)
   set({ mountedSessionCodes: mounted })
+}
+
+/** 仅推理无正文：与服务端落库占位对齐 */
+function applyReasoningOnlyPlaceholder(set: ChatStoreSet): void {
+  set((s) => {
+    const messages = s.messages.slice()
+    const last = messages[messages.length - 1]
+    if (
+      last?.role === 'assistant' &&
+      !last.content.trim() &&
+      (last.reasoning ?? '').trim()
+    ) {
+      messages[messages.length - 1] = { ...last, content: REASONING_ONLY_PLACEHOLDER }
+      return { messages }
+    }
+    return {}
+  })
 }
 
 interface ChatState {
@@ -130,6 +161,8 @@ interface ChatState {
   sessionCode?: string
   isStreaming: boolean
   error?: string
+  /** 上游明细，形如 `type: message` */
+  errorDetail?: string
   sessions: SessionSummary[]
   /** 侧栏历史列表首次加载中（已有数据时静默刷新，不闪骨架） */
   sessionsLoading: boolean
@@ -138,6 +171,10 @@ interface ChatState {
   _abort?: AbortController
   /** 路由切换序号，用于丢弃过期的 openSession 结果 */
   _routeLoadSeq: number
+  /** 流式请求世代：切会话 / stop 后迟到回调丢弃 */
+  _streamSeq: number
+  /** 会话已删序号：发送路径 404 后触发 URL 回首页 */
+  sessionGoneSeq: number
   composerPrefillSeq: number
   composerPrefillText: string
 
@@ -153,8 +190,8 @@ interface ChatState {
   loadModels: () => Promise<void>
   loadSessions: () => Promise<void>
   openSession: (sessionCode: string) => Promise<boolean>
-  removeSession: (sessionCode: string) => Promise<void>
-  removeSessions: (sessionCodes: string[]) => Promise<void>
+  removeSession: (sessionCode: string) => Promise<boolean>
+  removeSessions: (sessionCodes: string[]) => Promise<boolean>
 }
 
 export const useChatStore = create<ChatState>()(
@@ -171,39 +208,50 @@ export const useChatStore = create<ChatState>()(
       sessionCode: undefined,
       isStreaming: false,
       error: undefined,
+      errorDetail: undefined,
       sessions: [],
       sessionsLoading: true,
       mountedSessionCodes: [],
       _abort: undefined,
       _routeLoadSeq: 0,
+      _streamSeq: 0,
+      sessionGoneSeq: 0,
       composerPrefillSeq: 0,
       composerPrefillText: '',
 
+      /** 切换 Provider；不可用时展示错误 */
       setProvider: (provider) => {
         const option = get().providerOptions.find((p) => p.id === provider)
         if (option && !option.available) {
-          set({ error: option.reason ?? '该 Provider 当前不可用' })
+          set({ error: option.reason ?? '该提供商当前不可用', errorDetail: undefined })
           return
         }
-        set({ provider, error: undefined })
+        set({ provider, error: undefined, errorDetail: undefined })
         if (provider === 'openai') void get().loadModels()
       },
 
+      /** 设置当前模型 */
       setModel: (model) => set({ model }),
 
+      /** 将文本回填到输入框 */
       prefillComposer: (text) =>
         set((s) => ({
           composerPrefillText: text,
           composerPrefillSeq: s.composerPrefillSeq + 1,
         })),
 
+      /** 暗门：展示错误红条（默认带上游明细示例） */
       previewError: (message) =>
         set({
-          error: message?.trim() || STREAM_IDLE_TIMEOUT_MESSAGE,
+          error: message?.trim() || '鉴权或权限有问题，请检查 API Key 配置',
+          errorDetail: message?.trim()
+            ? undefined
+            : 'authentication_error: Invalid API key',
           isStreaming: false,
           _abort: undefined,
         }),
 
+      /** 拉取 OpenAI 模型列表 */
       loadModels: async () =>
         once(loadModelsOnce, async () => {
           try {
@@ -222,6 +270,7 @@ export const useChatStore = create<ChatState>()(
           }
         }),
 
+      /** 拉取 Provider 配置与可用性 */
       loadProviders: async () =>
         once(loadProvidersOnce, async () => {
           try {
@@ -244,18 +293,22 @@ export const useChatStore = create<ChatState>()(
           }
         }),
 
+      /** 清空当前对话，回到新对话状态 */
       newChat: () => {
         get()._abort?.abort()
-        set({
+        set((s) => ({
           messages: [],
           sessionCode: undefined,
           error: undefined,
+          errorDetail: undefined,
           isStreaming: false,
           _abort: undefined,
+          _streamSeq: s._streamSeq + 1,
           mountedSessionCodes: [],
-        })
+        }))
       },
 
+      /** 拉取侧栏历史列表 */
       loadSessions: async () =>
         once(loadSessionsOnce, async () => {
           const showLoading = get().sessions.length === 0
@@ -269,6 +322,7 @@ export const useChatStore = create<ChatState>()(
           }
         }),
 
+      /** 打开指定会话（缓存优先） */
       openSession: async (sessionCode) => {
         if (get().sessionCode === sessionCode && get().messages.length > 0) {
           mountSessionCode(get, set, sessionCode)
@@ -278,11 +332,18 @@ export const useChatStore = create<ChatState>()(
         const loadSeqAtCall = get()._routeLoadSeq
         const prevCode = get().sessionCode
 
+        // 中断进行中的流，并使迟到回调失效
         get()._abort?.abort()
-        if (prevCode && prevCode !== sessionCode) {
+        set((s) => ({ _streamSeq: s._streamSeq + 1 }))
+
+        if (prevCode && prevCode !== sessionCode && !isPendingSessionCode(prevCode)) {
           syncSessionCache(prevCode, get().messages)
         }
 
+        // 切走后卸掉 pending 挂载，再挂目标会话，避免空白壳残留
+        set((s) => ({
+          mountedSessionCodes: s.mountedSessionCodes.filter((c) => !isPendingSessionCode(c)),
+        }))
         mountSessionCode(get, set, sessionCode)
 
         const cached = sessionMessagesCache.get(sessionCode)
@@ -291,6 +352,7 @@ export const useChatStore = create<ChatState>()(
             sessionCode,
             messages: cached,
             error: undefined,
+            errorDetail: undefined,
             isStreaming: false,
             _abort: undefined,
           })
@@ -302,6 +364,7 @@ export const useChatStore = create<ChatState>()(
             messages: [],
             sessionCode: undefined,
             error: undefined,
+            errorDetail: undefined,
             isStreaming: false,
             _abort: undefined,
           })
@@ -333,13 +396,19 @@ export const useChatStore = create<ChatState>()(
             messages,
             isStreaming: false,
             error: undefined,
+            errorDetail: undefined,
             _abort: undefined,
           })
           return true
         } catch (e) {
           if (isStaleRouteLoad(loadSeqAtCall)) return true
+          const message = e instanceof Error ? e.message : '加载对话失败'
+          // 已删对话：顶部 Toast，不占消息区错误红条
+          const gone = isSessionGoneMessage(message)
+          if (gone) showToast(message)
           set({
-            error: e instanceof Error ? e.message : '加载对话失败',
+            error: gone ? undefined : message,
+            errorDetail: undefined,
             messages: [],
             sessionCode: undefined,
             isStreaming: false,
@@ -349,11 +418,15 @@ export const useChatStore = create<ChatState>()(
         }
       },
 
+      /** 删除单个会话 */
       removeSession: async (sessionCode) => {
         try {
           await deleteSessionApi(sessionCode)
-        } catch {
-          // 忽略删除错误，仍尝试刷新列表
+        } catch (e) {
+          const message = e instanceof Error ? e.message : '删除对话失败'
+          showToast(message)
+          // 对端已删：仍同步侧栏幽灵项；其它错误则中止
+          if (!isSessionGoneMessage(message)) return false
         }
         dropSessionCache(sessionCode)
         set((s) => ({
@@ -361,14 +434,18 @@ export const useChatStore = create<ChatState>()(
         }))
         if (get().sessionCode === sessionCode) get().newChat()
         await get().loadSessions()
+        return true
       },
 
+      /** 批量删除会话 */
       removeSessions: async (sessionCodes) => {
-        if (sessionCodes.length === 0) return
+        if (sessionCodes.length === 0) return true
         try {
           await deleteSessionsApi(sessionCodes)
-        } catch {
-          // 忽略删除错误，仍尝试刷新列表
+        } catch (e) {
+          const message = e instanceof Error ? e.message : '批量删除失败'
+          showToast(message)
+          if (!isSessionGoneMessage(message)) return false
         }
         for (const code of sessionCodes) dropSessionCache(code)
         set((s) => ({
@@ -377,35 +454,78 @@ export const useChatStore = create<ChatState>()(
         const current = get().sessionCode
         if (current && sessionCodes.includes(current)) get().newChat()
         await get().loadSessions()
+        return true
       },
 
+      /** 停止当前流式生成 */
       stop: () => {
         get()._abort?.abort()
-        set({ isStreaming: false, _abort: undefined })
+        set((s) => {
+          const messages = s.messages.slice()
+          const last = messages[messages.length - 1]
+          if (last?.role === 'assistant') {
+            const empty = !last.content.trim() && !(last.reasoning ?? '').trim()
+            if (empty) {
+              // 无任何产出的幽灵助手行
+              messages.pop()
+            } else if (!last.content.trim() && (last.reasoning ?? '').trim()) {
+              messages[messages.length - 1] = {
+                ...last,
+                content: REASONING_ONLY_PLACEHOLDER,
+              }
+            }
+          }
+          return {
+            messages,
+            isStreaming: false,
+            _abort: undefined,
+            _streamSeq: s._streamSeq + 1,
+          }
+        })
       },
 
+      /** 发送用户消息并拉取流式回复 */
       send: async (query) => {
         const trimmed = query.trim()
         const state = get()
         if (!trimmed || state.isStreaming) return
 
-        // 多轮上下文只带正文，过滤空 assistant，且不回传 reasoning（BUG-02）
+        // 多轮上下文只带正文：过滤空 assistant、仅推理占位符
         const history = state.messages
-          .filter((m) => m.role !== 'assistant' || m.content.trim().length > 0)
+          .filter((m) => {
+            if (m.role !== 'assistant') return true
+            const content = m.content.trim()
+            if (!content) return false
+            if (content === REASONING_ONLY_PLACEHOLDER) return false
+            return true
+          })
           .map((m) => ({ role: m.role, content: m.content }))
         const userMsg: ChatMessage = { id: uid(), role: 'user', content: trimmed }
         const assistantMsg: ChatMessage = { id: uid(), role: 'assistant', content: '', reasoning: '' }
+
+        const streamToken = state._streamSeq + 1
+        const hasRealSession =
+          Boolean(state.sessionCode) && !isPendingSessionCode(state.sessionCode)
+        const mountCode = hasRealSession ? state.sessionCode! : PENDING_SESSION_CODE
 
         const ac = new AbortController()
         set({
           messages: [...state.messages, userMsg, assistantMsg],
           isStreaming: true,
           error: undefined,
+          errorDetail: undefined,
           _abort: ac,
+          _streamSeq: streamToken,
+          sessionCode: mountCode,
         })
+        // 乐观挂载，避免 meta 前主区空白
+        mountSessionCode(get, set, mountCode)
+
+        const isStreamActive = () => get()._streamSeq === streamToken
 
         // 按 delta.type 分别累加 reasoning / content
-        const appendToAssistant = (delta: { type: 'reasoning' | 'text'; content: string }) =>
+        const appendToAssistant = (delta: { type: 'reasoning' | 'text'; content: string }) => {
+          if (!isStreamActive()) return
           set((s) => {
             const messages = s.messages.slice()
             const last = messages[messages.length - 1]
@@ -424,11 +544,13 @@ export const useChatStore = create<ChatState>()(
             }
             return { messages }
           })
+        }
 
         await streamChat(
           {
             query: trimmed,
-            sessionCode: get().sessionCode,
+            // pending 不传服务端，由服务端新建会话
+            sessionCode: hasRealSession ? state.sessionCode : undefined,
             provider: get().provider,
             model: get().provider === 'openai' ? get().model : undefined,
             messages: history,
@@ -436,25 +558,77 @@ export const useChatStore = create<ChatState>()(
           },
           {
             onMeta: (meta) => {
+              if (!isStreamActive()) return
+              set((s) => ({
+                mountedSessionCodes: s.mountedSessionCodes.filter((c) => !isPendingSessionCode(c)),
+              }))
               mountSessionCode(get, set, meta.sessionCode)
               set({ sessionCode: meta.sessionCode })
             },
             onDelta: appendToAssistant,
-            onDone: () => set({ isStreaming: false, _abort: undefined }),
-            onError: (message) => set({ error: message, isStreaming: false, _abort: undefined }),
+            onDone: () => {
+              if (!isStreamActive()) return
+              applyReasoningOnlyPlaceholder(set)
+              set({ isStreaming: false, _abort: undefined })
+            },
+            onError: (message, detail) => {
+              if (!isStreamActive()) return
+              // 会话已删：Toast + 清 code/缓存 + 去掉本轮乐观消息
+              const staleSession = isSessionGoneMessage(message)
+              if (!staleSession) {
+                set((s) => {
+                  const messages = s.messages.slice()
+                  const last = messages[messages.length - 1]
+                  // 建连失败 / 无产出时报错：去掉空助手幽灵行
+                  if (
+                    last?.role === 'assistant' &&
+                    !last.content.trim() &&
+                    !(last.reasoning ?? '').trim()
+                  ) {
+                    messages.pop()
+                  }
+                  return {
+                    error: message,
+                    errorDetail: detail,
+                    isStreaming: false,
+                    _abort: undefined,
+                    messages,
+                  }
+                })
+                return
+              }
+              showToast(message)
+              const code = get().sessionCode
+              if (code && !isPendingSessionCode(code)) dropSessionCache(code)
+              set((s) => ({
+                error: undefined,
+                errorDetail: undefined,
+                isStreaming: false,
+                _abort: undefined,
+                sessionCode: undefined,
+                sessionGoneSeq: s.sessionGoneSeq + 1,
+                messages: s.messages.length >= 2 ? s.messages.slice(0, -2) : [],
+                mountedSessionCodes: s.mountedSessionCodes.filter(
+                  (c) => c !== code && !isPendingSessionCode(c),
+                ),
+              }))
+            },
           },
         )
+
+        if (!isStreamActive()) return
 
         // 兜底：流程结束后确保流式状态复位
         if (get().isStreaming) set({ isStreaming: false, _abort: undefined })
         const code = get().sessionCode
-        if (code) syncSessionCache(code, get().messages)
+        if (code && !isPendingSessionCode(code)) syncSessionCache(code, get().messages)
         // 刷新侧栏会话列表（标题、更新时间、新会话）
         void get().loadSessions()
       },
     }),
     {
       name: 'xx-chat-ai',
+      /** 仅持久化 provider / model */
       partialize: (s) => ({ provider: s.provider, model: s.model }),
     },
   ),

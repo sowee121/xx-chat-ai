@@ -1,5 +1,5 @@
 /**
- * 历史列表骨架屏（10 条占位）。
+ * 历史列表骨架屏（10 条占位）
  */
 import { Skeleton } from '@/components/ui/skeleton'
 import { SidebarMenu, SidebarMenuItem } from '@/components/ui/sidebar'
@@ -12,6 +12,7 @@ interface SessionListSkeletonProps {
   visible: boolean
 }
 
+/** 历史列表骨架屏*/
 export function SessionListSkeleton({ visible }: SessionListSkeletonProps) {
   return (
     <div

@@ -1,5 +1,5 @@
 /**
- * 全局聊天区骨架蒙层控制。
+ * 全局聊天区骨架蒙层控制
  */
 import { waitForColumnReady } from '@/lib/waitForColumnReady'
 import {
@@ -20,20 +20,24 @@ let visible = false
 let ownerSessionCode: string | null = null
 const listeners = new Set<() => void>()
 
+/** 通知内容壳订阅者*/
 function notify() {
   listeners.forEach((cb) => cb())
 }
 
+/** 可取消的延迟等待*/
 function sleep(ms: number, gen: number): Promise<boolean> {
   return new Promise((resolve) => {
     setTimeout(() => resolve(generation === gen), ms)
   })
 }
 
+/** 读取内容壳是否可见*/
 export function getContentShellVisible(): boolean {
   return visible
 }
 
+/** 订阅内容壳可见性变化*/
 export function subscribeContentShell(listener: () => void): () => void {
   listeners.add(listener)
   return () => listeners.delete(listener)

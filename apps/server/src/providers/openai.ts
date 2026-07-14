@@ -1,10 +1,11 @@
 /**
- * OpenAI 兼容协议流式代理，含推理字段归一化。
+ * OpenAI 兼容协议流式代理，含推理字段归一化
  */
 import OpenAI from 'openai';
 import { getOpenaiCredentials } from '../config/local.js';
 import { extractReasoningFromDelta } from '../lib/reasoningDelta.js';
-import { ThinkingStreamParser } from '../lib/thinkingParser.js';
+import { stripThinkingTags, ThinkingStreamParser } from '../lib/thinkingParser.js';
+import { normalizeUpstreamError } from '../lib/upstreamError.js';
 import { DEFAULT_SYSTEM_PROMPT } from '../prompts/systemPrompt.js';
 import type { ChatStream, StreamOptions } from '../types.js';
 import { isOpenaiConfigured } from './config.js';
@@ -13,6 +14,7 @@ import { isOpenaiConfigured } from './config.js';
 let client: OpenAI | null = null;
 let clientKey = '';
 
+/** 获取（或重建）OpenAI 客户端*/
 export function getOpenaiClient(): OpenAI {
   const { apiKey, baseURL } = getOpenaiCredentials();
   if (!apiKey) {
@@ -25,27 +27,7 @@ export function getOpenaiClient(): OpenAI {
   return client;
 }
 
-/** 将 SDK 错误转为面向用户的中文提示 */
-function normalizeOpenaiError(err: unknown, model?: string): Error {
-  if (err instanceof OpenAI.APIError) {
-    if (err.status === 401) {
-      return new Error('API Key 无效，请检查 config.local.json 或环境变量');
-    }
-    if (err.status === 404) {
-      return new Error(`模型或端点不存在（model: ${model ?? 'unknown'}）`);
-    }
-    if (err.status === 429) {
-      return new Error('请求过于频繁或额度不足，请稍后重试');
-    }
-    const detail = err.message?.trim();
-    return new Error(detail ? `请求失败：${detail}` : `请求失败（${err.status}）`);
-  }
-  if (err instanceof Error && err.name === 'AbortError') return err;
-  if (err instanceof Error) return err;
-  return new Error('OpenAI API 请求失败');
-}
-
-/** 过滤供应商返回的模型列表，保留适合对话的模型。 */
+/** 过滤供应商返回的模型列表，保留适合对话的模型*/
 export function filterChatModels(ids: string[]): string[] {
   const deny =
     /^(text-embedding|embedding|whisper|tts|dall-e|davinci|babbage|curie|ada|moderation|omni-moderation|gpt-image|sora|computer-use|bge-|bge\/|reranker)/i;
@@ -107,8 +89,9 @@ function* emitParsed(parser: ThinkingStreamParser, text: string) {
 }
 
 /**
- * OpenAI provider：通过 openai SDK 以流式方式代理到 OpenAI API（兼容端点）。
- * 优先从 delta 多字段提取推理；否则对 content 做思考标签流式解析。
+ * OpenAI provider：通过 openai SDK 以流式方式代理到 OpenAI API（兼容端点）
+ * 优先从 delta 多字段提取推理；否则对 content 做思考标签流式解析
+ * 一旦走字段推理，本流后续 content 只剥标签出正文，避免双通道重复
  */
 export async function* openaiStream(opts: StreamOptions): ChatStream {
   const { query, messages, signal, model: modelOverride } = opts;
@@ -123,6 +106,8 @@ export async function* openaiStream(opts: StreamOptions): ChatStream {
   ];
 
   const parser = new ThinkingStreamParser();
+  /** 本轮是否已出现独立推理字段；为真则不再用标签解析 content */
+  let usedFieldReasoning = false;
 
   try {
     const stream = await getOpenaiClient().chat.completions.create(
@@ -135,22 +120,28 @@ export async function* openaiStream(opts: StreamOptions): ChatStream {
       const delta = chunk.choices[0]?.delta as DeltaWithReasoning | undefined;
       if (!delta) continue;
 
-      // 优先走独立推理字段；否则再解析 content 内标签
       const reasoning = extractReasoningFromDelta(delta as Record<string, unknown>);
       if (reasoning) {
+        usedFieldReasoning = true;
         yield { type: 'reasoning', content: reasoning };
       }
 
       const content = delta.content;
-      if (content) {
+      if (!content) continue;
+
+      if (usedFieldReasoning) {
+        // 字段通道已承担 reasoning：content 内标签剥掉，只推正文
+        const textOnly = stripThinkingTags(content);
+        if (textOnly) yield { type: 'text', content: textOnly };
+      } else {
         yield* emitParsed(parser, content);
       }
     }
   } catch (err) {
-    throw normalizeOpenaiError(err, model);
+    throw normalizeUpstreamError(err, { model, source: 'openai' });
   } finally {
-    // 用户停止/断连时不再 flush，避免 abort 后仍 yield 残留 chunk（BUG-07）
-    if (!signal.aborted) {
+    // 用户停止/断连时不再 flush；已走字段推理时丢弃标签解析缓冲，避免重复
+    if (!signal.aborted && !usedFieldReasoning) {
       for (const part of parser.flush()) {
         yield part;
       }

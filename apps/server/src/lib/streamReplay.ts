@@ -1,11 +1,12 @@
 /**
- * SSE 防重回放：分片节奏回放与 delta 聚合。
+ * SSE 防重回放：分片节奏回放与 delta 聚合
  */
 import type { StreamChunk } from '../types.js';
 
 /** 分片间隔，模拟真实 token 节奏 */
 const REPLAY_DELAY_MS = 20;
 
+/** 可取消的延迟等待*/
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }

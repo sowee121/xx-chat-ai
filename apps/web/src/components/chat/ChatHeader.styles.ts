@@ -1,5 +1,5 @@
 /**
- * ChatHeader 样式类名。
+ * ChatHeader 样式类名
  */
 export const styles = {
   header: 'flex h-14 shrink-0 items-center justify-between border-b px-4',

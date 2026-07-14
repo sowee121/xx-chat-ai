@@ -1,5 +1,5 @@
 /**
- * Provider / 模型列表 API。
+ * Provider / 模型列表 API
  */
 import type { FastifyInstance } from 'fastify';
 import {
@@ -10,6 +10,7 @@ import {
 } from '../providers/config.js';
 import { listOpenaiModels } from '../providers/openai.js';
 
+/** 注册 Provider / 模型路由*/
 export async function providerRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/providers', async () => {
     return {

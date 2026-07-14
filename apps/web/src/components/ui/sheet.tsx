@@ -1,5 +1,5 @@
 /**
- * shadcn Sheet 原语。
+ * shadcn Sheet 原语
  */
 import * as React from "react"
 import { Dialog as SheetPrimitive } from "radix-ui"

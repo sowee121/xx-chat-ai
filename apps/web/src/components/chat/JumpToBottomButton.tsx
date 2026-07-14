@@ -1,5 +1,5 @@
 /**
- * 回到底部按钮；流式中边框转圈提示。
+ * 回到底部按钮；流式中边框转圈提示
  */
 import { ArrowDown } from 'lucide-react'
 
@@ -16,6 +16,7 @@ interface JumpToBottomButtonProps {
   onClick: () => void
 }
 
+/** 回到底部按钮*/
 export function JumpToBottomButton({
   visible,
   streaming = false,

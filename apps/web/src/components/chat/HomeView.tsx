@@ -1,27 +1,29 @@
 /**
- * 空状态首页：引导文案、输入区与快捷标签。
+ * 空状态首页：引导文案、输入区与快捷标签
  */
-import { STREAM_IDLE_TIMEOUT_MESSAGE } from '@/lib/streamIdle'
 import { useChatStore } from '@/stores/chatStore'
 import { styles } from './HomeView.styles'
-import { styles as messageStyles } from './MessageList.styles'
+import { StreamErrorBanner } from './StreamErrorBanner'
 
 const SUGGESTIONS = [
   'SSE 与 WebSocket 对比',
   'JavaScript 防抖和节流函数',
   '登录流程图',
   '数学公式示例',
-  '示例图片',
+  '图片示例',
   '多格式演示',
+  '深度思考示例',
 ] as const
 
 /** 暗门：点击仅展示错误红条，不发请求 */
 const DEMO_ERROR_CHIP = '模拟错误提示'
 
+/** 空状态首页*/
 export function HomeView() {
   const send = useChatStore((s) => s.send)
   const previewError = useChatStore((s) => s.previewError)
   const error = useChatStore((s) => s.error)
+  const errorDetail = useChatStore((s) => s.errorDetail)
 
   return (
     <div className={styles.wrap}>
@@ -35,14 +37,14 @@ export function HomeView() {
           ))}
           <button
             type="button"
-            onClick={() => previewError(STREAM_IDLE_TIMEOUT_MESSAGE)}
+            onClick={() => previewError()}
             className={styles.chip}
-            title="暗门：预览流式错误提示样式"
+            title="暗门：预览错误红条（中文主文案 + type: message）"
           >
             {DEMO_ERROR_CHIP}
           </button>
         </div>
-        {error ? <div className={messageStyles.error}>{error}</div> : null}
+        {error ? <StreamErrorBanner message={error} detail={errorDetail} /> : null}
       </div>
     </div>
   )

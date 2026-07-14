@@ -1,5 +1,5 @@
 /**
- * 流式解析 content 内思考标签，拆成 reasoning / text。
+ * 流式解析 content 内思考标签，拆成 reasoning / text
  */
 export type StreamChunkType = 'reasoning' | 'text';
 
@@ -23,6 +23,7 @@ const THINKING_TAG_PAIRS: TagPair[] = [
   { open: '<|begin_of_thought|>', close: '<|end_of_thought|>' },
 ];
 
+/** 转义正则特殊字符*/
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -40,19 +41,21 @@ function longestPartialSuffix(s: string, candidates: string[]): number {
 }
 
 /**
- * 流式思考标签解析器：将混在 content 中的推理块拆为 reasoning / text。
- * 支持标签跨 chunk 切分；close 前内容归 reasoning，close 后归 text。
+ * 流式思考标签解析器：将混在 content 中的推理块拆为 reasoning / text
+ * 支持标签跨 chunk 切分；close 前内容归 reasoning，close 后归 text
  */
 export class ThinkingStreamParser {
   private buffer = '';
   private mode: StreamChunkType = 'text';
   private closeTag: string | null = null;
 
+  /** 推入一段 content 并产出解析结果*/
   push(input: string): StreamChunk[] {
     this.buffer += input;
     return this.drain(false);
   }
 
+  /** 刷新标签解析缓冲*/
   flush(): StreamChunk[] {
     return this.drain(true);
   }

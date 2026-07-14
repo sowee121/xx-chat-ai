@@ -1,5 +1,5 @@
 /**
- * 底部输入区：发送 / 停止与回填编辑。
+ * 底部输入区：发送 / 停止与回填编辑
  */
 import { useEffect, useRef, useState } from 'react'
 import { ArrowUp } from 'lucide-react'
@@ -13,6 +13,7 @@ interface ChatComposerProps {
   autoFocus?: boolean
 }
 
+/** 底部输入与发送区*/
 export function ChatComposer({ autoFocus = false }: ChatComposerProps) {
   const boxRef = useRef<HTMLDivElement>(null)
   const [query, setQuery] = useState('')

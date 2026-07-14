@@ -1,5 +1,5 @@
 /**
- * 侧栏：品牌、新建对话、历史列表与批量删除。
+ * 侧栏：品牌、新建对话、历史列表与批量删除
  */
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
@@ -31,6 +31,7 @@ import { useChatStore } from '@/stores/chatStore'
 import { SessionListSkeleton } from './SessionListSkeleton'
 import { styles } from './AppSidebar.styles'
 
+/** 侧栏历史与批量删除*/
 export function AppSidebar() {
   const { sessionCode: routeCode } = useParams()
   const sessions = useChatStore((s) => s.sessions)
@@ -121,11 +122,12 @@ export function AppSidebar() {
         : Boolean(activeSessionCode && deleteTarget.codes.includes(activeSessionCode))
 
     if (deleteTarget.kind === 'single') {
-      void removeSession(deleteTarget.sessionCode).then(() => {
-        if (wasCurrent) goHome()
+      void removeSession(deleteTarget.sessionCode).then((ok) => {
+        if (ok && wasCurrent) goHome()
       })
     } else {
-      void removeSessions(deleteTarget.codes).then(() => {
+      void removeSessions(deleteTarget.codes).then((ok) => {
+        if (!ok) return
         if (wasCurrent) goHome()
         exitBatchMode()
       })
@@ -235,7 +237,7 @@ export function AppSidebar() {
             {skeletonMounted ? <SessionListSkeleton visible={skeletonVisible} /> : null}
 
             {!sessionsLoading && sessions.length === 0 && !skeletonMounted ? (
-              <p className={styles.empty}>还没有对话～</p>
+              <p className={styles.empty}>暂无对话～</p>
             ) : sessions.length > 0 ? (
               <div
                 className={cn(

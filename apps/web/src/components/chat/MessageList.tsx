@@ -1,16 +1,18 @@
 /**
- * 消息列表：智能滚动、骨架触发与流式跟随。
+ * 消息列表：智能滚动、骨架触发与流式跟随
  */
 import { useEffect, useLayoutEffect, useRef, useState, type MutableRefObject } from 'react'
 
 import type { ChatMessage } from '@/lib/chat-types'
 import { cn } from '@/lib/utils'
 import { hideGlobalContentShell, runGlobalContentShell } from '@/lib/chatContentShell'
+import { isPendingSessionCode } from '@/lib/pendingSession'
 import { useContentShellVisible } from '@/hooks/useContentShellVisible'
 import { getCachedSessionMessages, useChatStore } from '@/stores/chatStore'
 import { JumpToBottomButton } from './JumpToBottomButton'
 import { MessageItem } from './MessageItem'
 import { styles } from './MessageList.styles'
+import { StreamErrorBanner } from './StreamErrorBanner'
 
 const NEAR_BOTTOM_PX = 80
 const LAYOUT_SNAP_MS = 1600
@@ -22,6 +24,7 @@ interface MessageListProps {
   active: boolean
 }
 
+/** 根据滚动位置更新贴底与跳转按钮状态*/
 function updateScrollUi(
   el: HTMLDivElement,
   followRef: MutableRefObject<boolean>,
@@ -32,6 +35,7 @@ function updateScrollUi(
   setShowJump(!atBottom && el.scrollHeight > el.clientHeight + NEAR_BOTTOM_PX)
 }
 
+/** 消息列表与智能滚动*/
 export function MessageList({ sessionCode, active }: MessageListProps) {
   const frozenRef = useRef<ChatMessage[]>(
     getCachedSessionMessages(sessionCode) ?? EMPTY_MESSAGES,
@@ -43,8 +47,12 @@ export function MessageList({ sessionCode, active }: MessageListProps) {
   const isStreaming = useChatStore(
     (s) => active && s.sessionCode === sessionCode && s.isStreaming,
   )
+  // sessionCode 与 store 对齐即可直播（含 pending）
   const error = useChatStore((s) =>
     active && s.sessionCode === sessionCode ? s.error : undefined,
+  )
+  const errorDetail = useChatStore((s) =>
+    active && s.sessionCode === sessionCode ? s.errorDetail : undefined,
   )
 
   useEffect(() => {
@@ -141,6 +149,7 @@ export function MessageList({ sessionCode, active }: MessageListProps) {
   const hasContent = count > 0
 
   // 切换会话：骨架蒙层；首次进入贴底，Keep-Alive 复用则保留 DOM 滚动位置
+  // 首条乐观消息 / pending→真实码：内容已在流里，不走历史加载骨架
   useLayoutEffect(() => {
     if (!active) {
       setContentMasked(false)
@@ -148,6 +157,17 @@ export function MessageList({ sessionCode, active }: MessageListProps) {
     }
     if (!hasContent) {
       setContentMasked(false)
+      return
+    }
+
+    // 用 ref 读流式态，避免 isStreaming 结束时二次跑进骨架
+    const skipShell = isPendingSessionCode(sessionCode) || isStreamingRef.current
+    if (skipShell) {
+      setContentMasked(false)
+      if (!hasBeenActiveRef.current) hasBeenActiveRef.current = true
+      followRef.current = true
+      setShowJump(false)
+      beginLayoutSnap()
       return
     }
 
@@ -239,7 +259,7 @@ export function MessageList({ sessionCode, active }: MessageListProps) {
             {messages.map((m, i) => (
               <MessageItem key={m.id} message={m} streaming={isStreaming && i === count - 1} />
             ))}
-            {error && <div className={styles.error}>{error}</div>}
+            {error && <StreamErrorBanner message={error} detail={errorDetail} />}
             <div className={styles.bottomSpacer} aria-hidden />
           </div>
         </div>

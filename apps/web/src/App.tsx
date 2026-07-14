@@ -1,5 +1,5 @@
 /**
- * 应用壳：SidebarProvider、TooltipProvider 与路由出口。
+ * 应用壳：SidebarProvider、TooltipProvider 与路由出口
  */
 import { useEffect } from 'react'
 import { Route, Routes } from 'react-router-dom'
@@ -7,6 +7,7 @@ import { Route, Routes } from 'react-router-dom'
 import { useChatStore } from '@/stores/chatStore'
 import { ChatLayout } from '@/routes/ChatLayout'
 
+/** 应用壳：加载 Provider 与路由*/
 function App() {
   const loadProviders = useChatStore((s) => s.loadProviders)
 

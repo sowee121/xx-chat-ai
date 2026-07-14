@@ -1,5 +1,5 @@
 /**
- * 服务端共享类型：聊天请求体、SSE 分片等。
+ * 服务端共享类型：聊天请求体、SSE 分片等
  */
 export type Provider = 'mock' | 'openai';
 

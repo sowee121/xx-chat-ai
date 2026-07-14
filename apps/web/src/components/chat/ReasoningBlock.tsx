@@ -1,5 +1,5 @@
 /**
- * 推理块：流式展开、「正在思考」扫光与历史折叠。
+ * 推理块：流式展开、「正在思考」扫光与历史折叠
  */
 import { useEffect, useRef, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
@@ -13,6 +13,7 @@ interface ReasoningBlockProps {
   streaming?: boolean
 }
 
+/** 思考过程折叠块*/
 export function ReasoningBlock({ content, streaming = false }: ReasoningBlockProps) {
   const [open, setOpen] = useState(streaming)
   // 用户手动折叠/展开后，不再被 streaming 副作用强制改 open

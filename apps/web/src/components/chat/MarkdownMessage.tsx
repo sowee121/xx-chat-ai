@@ -1,5 +1,5 @@
 /**
- * Streamdown 渲染助手 Markdown（含 Mermaid / 数学等插件）。
+ * Streamdown 渲染助手 Markdown（含 Mermaid / 数学等插件）
  */
 import { memo, useState, type MouseEvent } from 'react'
 import { Streamdown } from 'streamdown'
@@ -18,6 +18,7 @@ interface MarkdownMessageProps {
   animating?: boolean
 }
 
+/** 助手 Markdown 正文渲染*/
 export const MarkdownMessage = memo(function MarkdownMessage({
   content,
   animating = false,

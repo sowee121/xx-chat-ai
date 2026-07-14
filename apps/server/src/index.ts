@@ -1,5 +1,5 @@
 /**
- * Fastify 服务入口：注册路由、健康检查与静态资源（若有）。
+ * Fastify 服务入口：注册路由、健康检查与静态资源（若有）
  */
 import Fastify from 'fastify';
 import { listProviders } from './providers/config.js';

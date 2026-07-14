@@ -1,5 +1,5 @@
 /**
- * 亮暗主题切换按钮。
+ * 亮暗主题切换按钮
  */
 import { Moon, Sun } from 'lucide-react'
 import { useTheme } from 'next-themes'
@@ -21,6 +21,7 @@ const THEMES = [
   { value: 'system', label: '跟随系统' },
 ] as const
 
+/** 亮暗色主题切换按钮*/
 export function ModeToggle({ iconClassName }: { iconClassName?: string }) {
   const { theme, setTheme } = useTheme()
 

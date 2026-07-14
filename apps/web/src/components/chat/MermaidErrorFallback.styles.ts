@@ -1,5 +1,5 @@
 /**
- * MermaidErrorFallback 样式类名。
+ * MermaidErrorFallback 样式类名
  */
 export const styles = {
   wrap: 'overflow-x-auto',

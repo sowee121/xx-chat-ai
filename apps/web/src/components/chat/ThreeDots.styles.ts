@@ -1,5 +1,5 @@
 /**
- * ThreeDots 样式类名。
+ * ThreeDots 样式类名
  */
 export const styles = {
   root: 'three-dots inline-flex items-center gap-1',

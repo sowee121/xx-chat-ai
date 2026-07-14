@@ -1,8 +1,17 @@
 /**
- * 历史存储接口与内存实现（无 SQLite 时回退）。
+ * 历史存储接口与内存实现（无 SQLite 时回退）
  */
 import { randomUUID } from 'node:crypto';
 import type { Role, StreamChunk } from '../types.js';
+
+/** 客户端传入的 sessionCode 在库中不存在 */
+export class SessionNotFoundError extends Error {
+  /** 标记会话不存在错误 */
+  constructor(sessionCode: string) {
+    super(`session not found: ${sessionCode}`);
+    this.name = 'SessionNotFoundError';
+  }
+}
 
 export interface StoredMessage {
   id?: number;
@@ -30,14 +39,27 @@ export interface SessionSummary {
 }
 
 /**
- * 历史会话存储接口。第 2 步用内存实现，第 5 步换成 better-sqlite3，保持接口不变。
+ * 历史会话存储接口。第 2 步用内存实现，第 5 步换成 better-sqlite3，保持接口不变
  */
 export interface HistoryStore {
+  /** 列出会话摘要*/
   listSessions(): SessionSummary[];
+  /** 按 code 获取会话详情*/
   getSession(sessionCode: string): Session | undefined;
-  /** 确保会话存在（不存在则以 title 创建），返回会话。 */
+  /**
+   * 确保会话存在并返回
+   * - 无 sessionCode：新建（服务端生成 UUID）
+   * - 有 sessionCode 且存在：返回已有会话
+   * - 有 sessionCode 但不存在：抛出 SessionNotFoundError（不静默建空壳）
+   */
   ensureSession(sessionCode: string | undefined, title: string): Session;
+  /** 追加一条消息*/
   appendMessage(sessionCode: string, role: Role, content: string, reasoning?: string): number;
+  /**
+   * 若会话最后一条是 user，则删除之（建连失败回滚孤儿 user）
+   * @returns 是否删除成功
+   */
+  deleteLastUserMessage(sessionCode: string): boolean;
   /** 上一条 user+assistant 回合与 query/model 匹配时，返回可回放的流式 delta */
   findReplayDeltas(
     sessionCode: string,
@@ -45,17 +67,21 @@ export interface HistoryStore {
     provider: string,
     model: string,
   ): StreamChunk[] | null;
+  /** 保存流式回放缓存*/
   saveStreamCache(
     messageId: number,
     provider: string,
     model: string,
     deltas: StreamChunk[],
   ): void;
-  deleteSession(sessionCode: string): void;
-  deleteSessions(sessionCodes: string[]): void;
+  /** 删除单个会话*/
+  deleteSession(sessionCode: string): boolean;
+  /** @returns 实际删除条数 */
+  deleteSessions(sessionCodes: string[]): number;
 }
 
-function titleFromQuery(query: string): string {
+/** 由首条提问生成会话标题*/
+export function titleFromQuery(query: string): string {
   const t = query.trim().replace(/\s+/g, ' ');
   return t.length > 30 ? `${t.slice(0, 30)}…` : t || '新建对话';
 }
@@ -68,6 +94,7 @@ class InMemoryHistoryStore implements HistoryStore {
     { provider: string; model: string; deltas: StreamChunk[] }
   >();
 
+  /** 查找末轮 assistant 消息 id */
   private findLastAssistantMessageId(sessionCode: string): number | undefined {
     const session = this.sessions.get(sessionCode);
     if (!session || session.messages.length < 2) return undefined;
@@ -77,6 +104,7 @@ class InMemoryHistoryStore implements HistoryStore {
     return last.id;
   }
 
+  /** 列出会话摘要*/
   listSessions(): SessionSummary[] {
     return [...this.sessions.values()]
       .sort((a, b) => b.updatedAt - a.updatedAt)
@@ -89,18 +117,21 @@ class InMemoryHistoryStore implements HistoryStore {
       }));
   }
 
+  /** 按 code 获取会话详情*/
   getSession(sessionCode: string): Session | undefined {
     return this.sessions.get(sessionCode);
   }
 
+  /** 确保会话存在并返回*/
   ensureSession(sessionCode: string | undefined, title: string): Session {
     if (sessionCode) {
       const existing = this.sessions.get(sessionCode);
       if (existing) return existing;
+      throw new SessionNotFoundError(sessionCode);
     }
     const now = Date.now();
     const session: Session = {
-      sessionCode: sessionCode ?? randomUUID(),
+      sessionCode: randomUUID(),
       title: titleFromQuery(title),
       createdAt: now,
       updatedAt: now,
@@ -110,6 +141,7 @@ class InMemoryHistoryStore implements HistoryStore {
     return session;
   }
 
+  /** 追加一条消息*/
   appendMessage(sessionCode: string, role: Role, content: string, reasoning?: string): number {
     const session = this.sessions.get(sessionCode);
     if (!session) return 0;
@@ -121,6 +153,18 @@ class InMemoryHistoryStore implements HistoryStore {
     return id;
   }
 
+  /** 删除末条 user 消息*/
+  deleteLastUserMessage(sessionCode: string): boolean {
+    const session = this.sessions.get(sessionCode);
+    if (!session || session.messages.length === 0) return false;
+    const last = session.messages[session.messages.length - 1];
+    if (last.role !== 'user') return false;
+    session.messages.pop();
+    session.updatedAt = Date.now();
+    return true;
+  }
+
+  /** 查找可回放的流式缓存*/
   findReplayDeltas(
     sessionCode: string,
     query: string,
@@ -141,6 +185,7 @@ class InMemoryHistoryStore implements HistoryStore {
     return cached.deltas;
   }
 
+  /** 保存流式回放缓存*/
   saveStreamCache(
     messageId: number,
     provider: string,
@@ -150,22 +195,26 @@ class InMemoryHistoryStore implements HistoryStore {
     this.streamCache.set(messageId, { provider, model, deltas });
   }
 
-  deleteSession(sessionCode: string): void {
+  /** 删除单个会话*/
+  deleteSession(sessionCode: string): boolean {
     const session = this.sessions.get(sessionCode);
-    if (session) {
-      for (const message of session.messages) {
-        if (message.id != null) this.streamCache.delete(message.id);
-      }
+    if (!session) return false;
+    for (const message of session.messages) {
+      if (message.id != null) this.streamCache.delete(message.id);
     }
     this.sessions.delete(sessionCode);
+    return true;
   }
 
-  deleteSessions(sessionCodes: string[]): void {
+  /** 批量删除会话*/
+  deleteSessions(sessionCodes: string[]): number {
+    let deleted = 0;
     for (const sessionCode of sessionCodes) {
-      this.deleteSession(sessionCode);
+      if (this.deleteSession(sessionCode)) deleted += 1;
     }
+    return deleted;
   }
 }
 
-/** 内存实现，保留作为无 SQLite 环境的回退 / 测试用途；运行时默认使用 SqliteHistoryStore。 */
-export { InMemoryHistoryStore, titleFromQuery };
+/** 内存实现，保留作为无 SQLite 环境的回退 / 测试用途；运行时默认使用 SqliteHistoryStore*/
+export { InMemoryHistoryStore };

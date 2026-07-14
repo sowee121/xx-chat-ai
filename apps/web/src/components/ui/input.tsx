@@ -1,5 +1,5 @@
 /**
- * shadcn Input 原语。
+ * shadcn Input 原语
  */
 import * as React from "react"
 

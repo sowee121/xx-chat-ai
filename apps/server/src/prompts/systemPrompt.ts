@@ -1,6 +1,6 @@
 /**
- * OpenAI 默认系统提示。
- * 自定义 config.local.json 的 systemPrompt 会覆盖本段。
+ * OpenAI 默认系统提示
+ * 自定义 config.local.json 的 systemPrompt 会覆盖本段
  */
 export const DEFAULT_SYSTEM_PROMPT = [
   '你是 XX Chat AI 的助手。回答使用简洁、正确的中文 Markdown。',

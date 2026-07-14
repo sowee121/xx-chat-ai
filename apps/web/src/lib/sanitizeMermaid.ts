@@ -1,10 +1,11 @@
 /**
- * Mermaid 源码清洗与多策略渲染尝试。
+ * Mermaid 源码清洗与多策略渲染尝试
  */
 function quoteLabel(label: string): string {
   return `"${label.replace(/"/g, '\\"')}"`
 }
 
+/** 标签是否已带引号*/
 function isQuoted(label: string): boolean {
   const trimmed = label.trim()
   return (
@@ -13,23 +14,26 @@ function isQuoted(label: string): boolean {
   )
 }
 
+/** 转义 Mermaid 标题字符*/
 function escapeMermaidTitle(title: string): string {
   return `"${title.replace(/"/g, '\\"')}"`
 }
 
+/** 文本是否需要加 Mermaid 引号*/
 function needsMermaidQuotes(text: string): boolean {
   const t = text.trim()
   if (!t || isQuoted(t)) return false
   return !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(t)
 }
 
+/** 必要时为文本加引号*/
 function quoteIfNeeded(text: string): string {
   const t = text.trim()
   if (!t || isQuoted(t) || !needsMermaidQuotes(t)) return t
   return escapeMermaidTitle(t)
 }
 
-/** 统一换行、去 BOM / 零宽字符。 */
+/** 统一换行、去 BOM / 零宽字符*/
 export function normalizeMermaidSource(code: string): string {
   return code
     .replace(/\uFEFF/g, '')
@@ -45,6 +49,7 @@ function replaceSmartQuotes(code: string): string {
     .replace(/[\u2018\u2019]/g, "'")
 }
 
+/** 为 xychart 类别标签加引号*/
 function quoteXychartCategoryLabel(label: string): string {
   const trimmed = label.trim()
   if (!trimmed) return trimmed
@@ -54,7 +59,7 @@ function quoteXychartCategoryLabel(label: string): string {
 }
 
 /**
- * 修复 xychart-beta：分类轴中文标签、标题补引号。
+ * 修复 xychart-beta：分类轴中文标签、标题补引号
  */
 export function fixXychartBetaSyntax(code: string): string {
   const source = normalizeMermaidSource(code)
@@ -79,7 +84,7 @@ export function fixXychartBetaSyntax(code: string): string {
 }
 
 /**
- * 时序图：箭头后 / Note 后的全角冒号 → 半角。
+ * 时序图：箭头后 / Note 后的全角冒号 → 半角
  */
 export function fixSequenceDiagramColons(code: string): string {
   const source = normalizeMermaidSource(code)
@@ -114,7 +119,7 @@ function fixSubgraphTitles(code: string): string {
 }
 
 /**
- * 非法 `bar`/`line` + `series "名" [...]` → 合法 `bar [...]` / `line [...]`。
+ * 非法 `bar`/`line` + `series "名" [...]` → 合法 `bar [...]` / `line [...]`
  */
 export function convertInvalidXychartSeries(code: string): string | null {
   const source = normalizeMermaidSource(code)
@@ -158,7 +163,7 @@ export function convertInvalidXychartSeries(code: string): string | null {
 }
 
 /**
- * 伪语法 barChart → xychart-beta。
+ * 伪语法 barChart → xychart-beta
  */
 export function convertInvalidBarChart(code: string): string | null {
   const source = normalizeMermaidSource(code)
@@ -258,8 +263,8 @@ export function sanitizeMermaidBlockAggressive(code: string): string {
 }
 
 /**
- * 主流模型常见错法的安全预处理（尽量不误伤合法语法）。
- * 渲染时应优先尝试本结果。
+ * 主流模型常见错法的安全预处理（尽量不误伤合法语法）
+ * 渲染时应优先尝试本结果
  */
 export function prepareMermaidSource(code: string): string {
   let source = replaceSmartQuotes(normalizeMermaidSource(code))

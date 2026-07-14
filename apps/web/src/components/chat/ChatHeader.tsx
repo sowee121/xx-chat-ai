@@ -1,5 +1,5 @@
 /**
- * 聊天顶栏：侧栏触发、新建、模型与 Provider、主题。
+ * 聊天顶栏：侧栏触发、新建、模型与 Provider、主题
  */
 import { SquarePen } from 'lucide-react'
 
@@ -14,6 +14,7 @@ import { ProviderMenu } from './ProviderMenu'
 import { ModelMenu } from './ModelMenu'
 import { styles } from './ChatHeader.styles'
 
+/** 聊天顶栏*/
 export function ChatHeader() {
   const { sessionCode: routeCode } = useParams()
   const { goHome } = useSessionNavigation()

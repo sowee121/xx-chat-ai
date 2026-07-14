@@ -1,5 +1,5 @@
 /**
- * Provider 下拉：Mock / OpenAI 切换。
+ * Provider 下拉：Mock / OpenAI 切换
  */
 import { ChevronDown } from 'lucide-react'
 
@@ -20,6 +20,7 @@ const LABELS: Record<Provider, string> = {
   openai: 'OpenAI',
 }
 
+/** Provider 下拉菜单*/
 export function ProviderMenu() {
   const provider = useChatStore((s) => s.provider)
   const providerOptions = useChatStore((s) => s.providerOptions)
@@ -34,7 +35,7 @@ export function ProviderMenu() {
           <ChevronDown className={styles.chevron} />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
+      <DropdownMenuContent align="end" className={styles.content}>
         <DropdownMenuRadioGroup
           value={provider}
           onValueChange={(value) => setProvider(value as Provider)}
@@ -45,6 +46,7 @@ export function ProviderMenu() {
               value={option.id}
               disabled={!option.available}
               title={option.reason}
+              className={styles.item}
             >
               {option.label}
               {!option.available && option.reason ? (

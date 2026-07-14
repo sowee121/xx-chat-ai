@@ -1,5 +1,5 @@
 /**
- * 等待消息列内图片、Mermaid 等布局稳定。
+ * 等待消息列内图片、Mermaid 等布局稳定
  */
 const STABLE_MS = 180
 const TIMEOUT_MS = 5000

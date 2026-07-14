@@ -1,5 +1,5 @@
 /**
- * Mermaid 渲染失败降级：展示源码避免红错打断阅读。
+ * Mermaid 渲染失败降级：展示源码避免红错打断阅读
  */
 import type { MermaidErrorComponentProps } from 'streamdown'
 

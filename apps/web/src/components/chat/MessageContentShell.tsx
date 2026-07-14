@@ -1,5 +1,5 @@
 /**
- * 聊天区全局骨架蒙层 UI。
+ * 聊天区全局骨架蒙层 UI
  */
 import { cn } from '@/lib/utils'
 import { styles } from './MessageContentShell.styles'
@@ -9,6 +9,7 @@ interface MessageContentShellProps {
   visible: boolean
 }
 
+/** 内容区骨架占位一轮*/
 function SkeletonTurn({ variant }: { variant: 'short' | 'long' }) {
   return (
     <>
@@ -33,6 +34,7 @@ function SkeletonTurn({ variant }: { variant: 'short' | 'long' }) {
   )
 }
 
+/** 会话切换时的内容骨架蒙层*/
 export function MessageContentShell({ visible }: MessageContentShellProps) {
   return (
     <div

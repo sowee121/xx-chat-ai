@@ -1,5 +1,5 @@
 /**
- * shadcn Tooltip 原语。
+ * shadcn Tooltip 原语
  */
 import * as React from "react"
 import { Tooltip as TooltipPrimitive } from "radix-ui"

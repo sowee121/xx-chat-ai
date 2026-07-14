@@ -10,7 +10,7 @@
 >
 > **样式栈**：shadcn/ui + Tailwind CSS 4 + next-themes
 
-**当前状态**：Phase 6（加载骨架屏与会话体验优化）已落地，可 `pnpm dev` 验收。
+**当前状态**：Phase 6（加载骨架屏与会话体验优化）已落地；上游错误归一化、首条发消息免骨架等体验项已同步，可 `pnpm dev` 验收。
 
 ---
 
@@ -132,11 +132,13 @@ pnpm add next-themes streamdown @streamdown/code @streamdown/mermaid @streamdown
 | --- | --- |
 | 侧栏 | `AppSidebar` + shadcn `Sidebar`（offcanvas，宽 `280px`）；顶部品牌（`PawPrint` 方标 +「XX Chat AI」`text-xl`）；「新建对话」；历史对话列表（`sessionsLoading` + `useDeferredSkeleton` 延时淡出）；标题行固定 `h-10` + 批量按钮占位槽；批量选择与删除；`TooltipProvider` 包裹（必须，否则白屏） |
 | 顶栏 | `ChatHeader`：左 `SidebarTrigger` + 新建对话；右 `ModelMenu` + `ProviderMenu` + `ModeToggle`（左右 `gap-2`） |
-| 空状态 | `HomeView`：居中标题 + `ChatComposer` + 快捷标签 |
+| 空状态 | `HomeView`：居中标题 + `ChatComposer` + 快捷标签（含「深度思考示例」「图片示例」；暗门「模拟错误提示」） |
 | 用户消息 | 右对齐 `bg-muted` 圆角气泡（`h-12` 单行等价高度）；hover 显示编辑（回填输入框）+ 复制 |
 | AI 消息 | 全宽 `MarkdownMessage`（`leading-7`）；可选 `ReasoningBlock`（历史默认折叠；流式中自动展开；「正在思考」文案扫光） |
+| 流式错误 | `StreamErrorBanner`：红条 `w-fit max-w-full`；上行为大类中文，下行可选上游 `type: message` |
+| 全局 Toast | `AppToast` + `toastStore`（如会话已删 404，约 3s） |
 | 等待回复 | `ThreeDots` 三点动画（无气泡、无文案；颜色浅灰→灰→黑错开跳动） |
-| 加载骨架 | 聊天区 `MessageContentShell`（全局唯一蒙层，无底色，仅 `bg-muted` 脉冲条）；历史列表 `SessionListSkeleton`（10 条 `h-10`）；时序见 `lib/shellTiming.ts` |
+| 加载骨架 | 聊天区 `MessageContentShell`（全局唯一蒙层，无底色，仅 `bg-muted` 脉冲条）；**仅切换已有会话时触发**；首页首条 / pending→真实码 / 流式中跳过；历史列表 `SessionListSkeleton`（10 条 `h-10`）；时序见 `lib/shellTiming.ts` |
 | 会话切换 | `mountedSessionCodes` Keep-Alive（LRU 上限 10）；`sessionMessagesCache` 命中则跳过 `GET /history/:code`；滚动沿用 DOM（刷新/重挂载贴底） |
 | 输入区 | `ChatComposer` 悬浮底部（`pt-2 pb-6`，与消息列 `py-6` 对齐）；支持 `prefillComposer` 回填编辑 |
 | Provider | `ProviderMenu`（`outline` 胶囊）；流式中禁用 |
@@ -213,6 +215,7 @@ xx-chat-ai/
 │   │       │       ├── ChatComposer.tsx + .styles.ts
 │   │       │       ├── HomeView.tsx + .styles.ts
 │   │       │       ├── MessageList.tsx + .styles.ts
+│   │       │       ├── StreamErrorBanner.tsx
 │   │       │       ├── JumpToBottomButton.tsx + .styles.ts
 │   │       │       ├── MessageContentShell.tsx + .styles.ts
 │   │       │       ├── MessageItem.tsx + .styles.ts
@@ -226,6 +229,9 @@ xx-chat-ai/
 │   │       ├── lib/
 │   │       │   ├── chat-types.ts
 │   │       │   ├── chat-routes.ts
+│   │       │   ├── pendingSession.ts     # 首条乐观挂载临时 sessionCode
+│   │       │   ├── reasoningPlaceholder.ts
+│   │       │   ├── sessionGone.ts
 │   │       │   ├── chatContentShell.ts   # 全局聊天骨架蒙层
 │   │       │   ├── shellTiming.ts        # 骨架最短展示/延时/淡出常量
 │   │       │   ├── waitForColumnReady.ts # 图片/Mermaid 布局稳定检测
@@ -238,7 +244,7 @@ xx-chat-ai/
 │   │       │   ├── useContentShellVisible.ts
 │   │       │   └── useDeferredSkeleton.ts
 │   │       ├── routes/ChatLayout.tsx
-│   │       ├── stores/chatStore.ts
+│   │       ├── stores/chatStore.ts | toastStore.ts
 │   │       ├── services/sseClient.ts | historyApi.ts | providerApi.ts
 │   └── server/
 │       ├── config.local.example.json   # 模板（进仓库）
@@ -248,6 +254,7 @@ xx-chat-ai/
 │           ├── index.ts
 │           ├── config/local.ts
 │           ├── lib/
+│           │   ├── upstreamError.ts    # 上游错误归一化（中文 + detail）
 │           │   ├── thinkingParser.ts   # 流式思考标签 → reasoning/text
 │           │   ├── reasoningDelta.ts   # delta 多字段推理归一化
 │           │   ├── streamReplay.ts     # SSE delta 聚合与分片回放
@@ -291,6 +298,19 @@ xx-chat-ai/
 
 事件：`meta` → `delta`* → `done` | `error`；客户端 AbortController 停止时服务端持久化**已生成的正文与推理**（多轮请求仍不回传推理）。
 
+**`error` 事件**：
+
+```ts
+{ message: string; detail?: string }
+```
+
+- `message`：面向用户的大类中文提示（鉴权 / 限流额度 / 参数 / 暂不可用等）。
+- `detail`：可选，上游 `type: message` 原文拼接；由 `StreamErrorBanner` 显示在中文下方。
+
+**上游错误归一化**（`lib/upstreamError.ts`）：综合 HTTP status、`error.type`、英文关键字启发式分类；英文细节只进 `detail` 与服务端日志，不单独作为主文案透传。
+
+**无效 `sessionCode`**（BUG-06）：客户端传入的 code 在库中不存在时，在进入 SSE 前返回 **HTTP 404** `{ error: '对话不存在或已删除' }`，**不会**用该 code 静默新建空会话；省略 `sessionCode` 时仍正常新建。
+
 **重复提问回放**（2026-07）：同 `sessionCode` + 相同 `query` + 相同 `provider`/`model` 命中缓存时，服务端回放已存 delta 序列（`pacedReplayStream`），不调用 LLM；缓存含完整 `reasoning`/`text` delta，回放会再现思考块；流结束后写入/更新 `stream_replay_cache`。
 
 **delta 载荷**（2026-07 扩展）：
@@ -332,9 +352,12 @@ xx-chat-ai/
 
 | 关键词 | 响应格式 |
 | --- | --- |
+| 深度思考 / 思考示例 / reasoning | 先流式 `reasoning`，再 `text` 正文 |
 | 表格/对比/SSE/WebSocket | GFM 表格 |
 | 防抖/节流/代码/typescript | 代码块 |
 | mermaid/流程图 | Mermaid 图 |
+| 图片 / 图片示例 | 示例图 Markdown |
+| 公式 / math | KaTeX 公式 |
 | 其他 | 多格式 showcase（表+码+图+Mermaid） |
 
 ---
@@ -397,7 +420,7 @@ cp apps/server/config.local.example.json apps/server/config.local.json
 - [x] `GET /api/providers` 可用性探测
 - [x] `GET /api/providers/openai/models` 动态模型列表
 - [x] Header `ProviderMenu` + `ModelMenu` 运行时切换
-- [x] 401/404/429 等错误中文提示
+- [x] 上游错误归一化：大类中文 + 可选 `detail`（`type: message`）；不再透传英文作主文案
 
 ### Phase 4 — 推理与体验增强 ✅
 
@@ -471,7 +494,7 @@ sequenceDiagram
 2. **Store → URL**：仅在「从无到有 sessionCode」时 `navigate`（`onMeta` / 首条消息），用 **`replace: true`**，避免历史栈多一层空 `/`。
 3. **侧栏点击**：`navigate(/chat/${code})`，由规则 1 加载会话；若已在同 code 且 messages 非空则 `openSession` 早返回（保持现有逻辑）。
 4. **新建对话**：先 `newChat()` 再 `navigate('/')`，或 `navigate` 后由 `/` 路由 mount 调 `newChat()`（二选一，避免双清）。
-5. **流式中**：禁止因 URL 变化触发 `openSession` 覆盖当前流；`isStreaming` 时路由守卫或忽略 param 变更。
+5. **流式中**：abort 当前流并跟新 URL 的会话；`send` 用 `_streamSeq` 丢弃迟到 `delta`/`meta`（BUG-08）。
 
 #### 5.5 文件改动清单
 
@@ -534,7 +557,7 @@ apps/web/src/
 | 项 | 实现 |
 | --- | --- |
 | 组件 | `MessageContentShell`（`ChatLayout` 内全局唯一实例） |
-| 触发 | `MessageList` 激活且有消息时，`useLayoutEffect` 调 `runGlobalContentShell` |
+| 触发 | `MessageList` 激活且有消息时；**跳过**：`PENDING_SESSION_CODE`、流式中 pending→真实码（首条发送不闪骨架） |
 | 遮罩 | 蒙层无 `bg-background`，仅 `bg-muted` 脉冲条；消息列表 `opacity-0` 直至淡出完成 |
 | 尺寸 | 用户气泡 `h-12`（对齐 `userBubble` 单行）；助手行 `h-7`（对齐 `leading-7`） |
 | 稳定检测 | `waitForColumnReady`：ResizeObserver + 图片 `load`/`error`，最长 5s 超时 |
@@ -598,6 +621,7 @@ flowchart LR
 #### 6.6 验收清单
 
 - [x] 刷新/切换会话：骨架先于内容展示，无首帧闪动
+- [x] 首页首条发送：不展示聊天区骨架（pending / 流式跳过）
 - [x] 骨架淡出与内容淡入约 400ms，最短展示 + 延时可感知
 - [x] 历史列表首屏骨架 10 条，标题行不抖动
 - [x] 切回已缓存会话不发起 `GET /api/history/:code`
@@ -642,15 +666,25 @@ pnpm build   # web + server
 | 空 assistant 污染多轮上下文 | `chatStore` 过滤无正文 assistant（BUG-02） |
 | 流式报错丢失 partial | `catch` 路径 `persistAssistantIfAny`（BUG-03） |
 | abort 后 provider 多余 flush | `signal.aborted` 时跳过 `parser.flush()`（BUG-07） |
+| 流式中切会话写串 | `_streamSeq` 世代守卫（BUG-08） |
+| 首条发送 meta 前空白 | 乐观挂载 `PENDING_SESSION_CODE`（BUG-09） |
+| 仅推理轮次刷新前后不一致 | 前端 `onDone`/`stop` 对齐占位符（BUG-10） |
+| 过早停止空白助手行 | `stop`/无产出 `onError` 移除空 assistant（BUG-11） |
+| 建连失败孤儿 user | catch 无产出时 `deleteLastUserMessage`（BUG-12） |
+| 空闲超时上游仍挂 | idle 先 `abort()` 再抛错（BUG-13） |
+| 占位符进多轮上下文 | history 过滤 `REASONING_ONLY_PLACEHOLDER`（BUG-14） |
 | 切换会话消息区闪动 | Keep-Alive + `sessionMessagesCache` + 稳定 `msg-{id}` |
 | 切换会话重复拉详情 | 缓存命中时 `openSession` 早返回，跳过 GET |
+| 上游英文错误直接透传 | `upstreamError`：大类中文 + SSE `detail`（`type: message`） |
+| 首条发消息闪骨架 | pending / 流式中跳过 `MessageContentShell` |
 | 骨架屏一闪而过 | `shellTiming` 最短展示 + 延时 + 400ms 淡出 |
 | 侧栏标题行刷新抖动 | `groupHeader` 固定 `h-10` + `batchToggleSlot` 占位 |
 | 宽窄屏临界侧栏闪烁 | `useIsMobile` 改 `matchMedia` + `useSyncExternalStore`，与 CSS `md` 对齐；进出窄屏关闭 `openMobile` |
 | 免费模型卡住三点动画 | SSE / provider **空闲超时** 60s（前后端，Mock 除外），提示更换模型或重试 |
 | 新克隆 `pnpm install` 忽略构建 | `onlyBuiltDependencies` 迁出 `package.json#pnpm` → `pnpm-workspace.yaml`（兼 `allowBuilds`，适配 pnpm 11） |
+| 待排期 Bug | 见 [`docs/bugs-plan.md`](./bugs-plan.md)：BUG-01～14 均已修复 |
 
-**待修复 Bug 排期**：见 [`docs/bugs-plan.md`](./bugs-plan.md)（BUG-01～03、07 已修复，其余待排期）。
+**待修复 Bug 排期**：见 [`docs/bugs-plan.md`](./bugs-plan.md)（BUG-01～14 均已修复）。
 
 ---
 

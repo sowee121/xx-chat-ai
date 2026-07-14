@@ -1,5 +1,5 @@
 /**
- * 从供应商 delta 多字段提取推理文本。
+ * 从供应商 delta 多字段提取推理文本
  */
 
 /** 网关/代理可能把推理放在 delta 的多个字段名里 */
@@ -12,6 +12,7 @@ const REASONING_FIELD_KEYS = [
 
 type ReasoningObject = Record<string, unknown>;
 
+/** 从推理对象提取文本*/
 function textFromObject(obj: ReasoningObject): string | undefined {
   for (const key of ['text', 'content', 'thinking', 'reasoning'] as const) {
     const v = obj[key];
@@ -49,8 +50,8 @@ function reasoningFromThinkingBlocks(blocks: unknown): string | undefined {
 }
 
 /**
- * 从 OpenAI 兼容流式 delta 中提取推理文本（P0）。
- * 支持多字段名、对象型 reasoning_content、thinking_blocks。
+ * 从 OpenAI 兼容流式 delta 中提取推理文本（P0）
+ * 支持多字段名、对象型 reasoning_content、thinking_blocks
  */
 export function extractReasoningFromDelta(delta: Record<string, unknown>): string | undefined {
   for (const key of REASONING_FIELD_KEYS) {

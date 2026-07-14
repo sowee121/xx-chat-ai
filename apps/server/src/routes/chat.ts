@@ -1,13 +1,15 @@
 /**
- * 聊天 SSE 路由：流式推送、落库、防重 delta 回放。
+ * 聊天 SSE 路由：流式推送、落库、防重 delta 回放
  */
 import type { FastifyInstance } from 'fastify';
 import { resolveRequestModel } from '../lib/resolveModel.js';
 import { withStreamIdleTimeout } from '../lib/streamIdle.js';
 import { aggregateStreamChunks, pacedReplayStream } from '../lib/streamReplay.js';
 import { stripThinkingTags } from '../lib/thinkingParser.js';
+import { UpstreamUserError } from '../lib/upstreamError.js';
 import { getDefaultProvider } from '../providers/config.js';
 import { getProvider } from '../providers/index.js';
+import { SessionNotFoundError } from '../store/history.js';
 import { historyStore } from '../store/sqlite.js';
 import type { ChatRequestBody, StreamChunk } from '../types.js';
 
@@ -35,7 +37,9 @@ const bodySchema = {
   },
 };
 
-/** 仅有推理、无正文时落库占位，避免刷新后 assistant 行丢失（BUG-01） */
+/** 仅有推理、无正文时落库占位，避免刷新后 assistant 行丢失
+ * 文案须与前端 `apps/web/src/lib/reasoningPlaceholder.ts` 保持一致
+ */
 const REASONING_ONLY_PLACEHOLDER = '（本轮无正文输出）';
 
 /** 决定 assistant 落库正文：有 text 用 text；仅推理则占位；皆无则不落库 */
@@ -58,6 +62,18 @@ function persistAssistantIfAny(
   return historyStore.appendMessage(sessionCode, 'assistant', contentToSave, reasoningToSave);
 }
 
+/**
+ * 无任何流式产出且未落库 assistant 时，回滚本轮孤儿 user
+ */
+function rollbackOrphanUserIfNeeded(
+  sessionCode: string,
+  streamedDeltas: StreamChunk[],
+  assistantId: number | null,
+): void {
+  if (assistantId != null || streamedDeltas.length > 0) return;
+  historyStore.deleteLastUserMessage(sessionCode);
+}
+
 /** 仅完整结束时写入防重缓存，中途 abort 不缓存半截流 */
 function saveReplayCacheIfComplete(
   messageId: number | null,
@@ -70,6 +86,7 @@ function saveReplayCacheIfComplete(
   historyStore.saveStreamCache(messageId, provider, model, deltas);
 }
 
+/** 注册聊天 SSE 路由*/
 export async function chatRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Body: ChatRequestBody }>(
     '/api/chat',
@@ -79,7 +96,17 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
       const provider = body.provider ?? getDefaultProvider();
       const model = resolveRequestModel(provider, body.model);
 
-      const session = historyStore.ensureSession(body.sessionCode, body.query);
+      let session;
+      try {
+        session = historyStore.ensureSession(body.sessionCode, body.query);
+      } catch (err) {
+        // 传入已删除/不存在的 sessionCode：在 hijack 前返回 HTTP 404
+        if (err instanceof SessionNotFoundError) {
+          return reply.code(404).send({ error: '对话不存在或已删除' });
+        }
+        throw err;
+      }
+
       // 同会话同文案同模型命中则走回放，不调大模型
       const replayDeltas = historyStore.findReplayDeltas(
         session.sessionCode,
@@ -119,7 +146,7 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
           // 回放仍走空闲超时，避免卡死；Mock 实时流不套超时
           for await (const delta of withStreamIdleTimeout(
             pacedReplayStream(replayDeltas, ac.signal),
-            { signal: ac.signal },
+            { signal: ac.signal, abort: () => ac.abort() },
           )) {
             if (ac.signal.aborted) break;
             streamedDeltas.push(delta);
@@ -134,7 +161,9 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
           });
 
           const deltaSource =
-            provider === 'mock' ? stream : withStreamIdleTimeout(stream, { signal: ac.signal });
+            provider === 'mock'
+              ? stream
+              : withStreamIdleTimeout(stream, { signal: ac.signal, abort: () => ac.abort() });
 
           for await (const delta of deltaSource) {
             if (ac.signal.aborted) break;
@@ -169,11 +198,20 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
         }
       } catch (err) {
         request.log.error(err);
-        // 报错 / 空闲超时路径也落库已生成的 partial，与 abort 行为对齐（BUG-03）
+        // 报错 / 空闲超时路径也落库已生成的 partial，与 abort 行为对齐
         const { fullText, fullReasoning, hadReasoning } = aggregateStreamChunks(streamedDeltas);
-        persistAssistantIfAny(session.sessionCode, fullText, fullReasoning, hadReasoning);
+        const assistantId = persistAssistantIfAny(
+          session.sessionCode,
+          fullText,
+          fullReasoning,
+          hadReasoning,
+        );
+        // 建连失败等：无任何产出时回滚本轮 user
+        rollbackOrphanUserIfNeeded(session.sessionCode, streamedDeltas, assistantId);
         ac.abort();
-        send('error', { message: err instanceof Error ? err.message : 'stream error' });
+        const message = err instanceof Error ? err.message : 'stream error';
+        const detail = err instanceof UpstreamUserError ? err.detail : undefined;
+        send('error', detail ? { message, detail } : { message });
       } finally {
         if (!raw.writableEnded) raw.end();
       }

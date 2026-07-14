@@ -1,5 +1,5 @@
 /**
- * shadcn DropdownMenu 原语。
+ * shadcn DropdownMenu 原语
  */
 "use client"
 

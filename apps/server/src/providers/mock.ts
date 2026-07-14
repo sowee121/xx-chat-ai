@@ -1,12 +1,14 @@
 /**
- * Mock Provider：按关键词返回多格式流式示例。
+ * Mock Provider：按关键词返回多格式流式示例
  */
 import type { ChatStream, StreamOptions } from '../types.js';
 
+/** 可取消的延迟等待*/
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Mock：代码意图回复*/
 function codeAnswer(q: string): string[] {
   const wantsThrottle = /节流|throttle/i.test(q);
   const lines = [
@@ -53,6 +55,7 @@ function codeAnswer(q: string): string[] {
   return lines;
 }
 
+/** Mock：表格意图回复*/
 function tableAnswer(q: string): string[] {
   return [
     `关于「${q}」，可以从下表快速对比：`,
@@ -69,6 +72,7 @@ function tableAnswer(q: string): string[] {
   ];
 }
 
+/** Mock：流程图意图回复*/
 function mermaidAnswer(q: string): string[] {
   return [
     `这是「${q}」的流程图：`,
@@ -88,6 +92,7 @@ function mermaidAnswer(q: string): string[] {
   ];
 }
 
+/** Mock：公式意图回复*/
 function mathAnswer(q: string): string[] {
   return [
     `关于「${q}」，下面是一些常用公式示例：`,
@@ -108,16 +113,18 @@ function mathAnswer(q: string): string[] {
   ];
 }
 
+/** Mock：图片意图回复*/
 function imageAnswer(q: string): string[] {
   return [
     `这是一张与「${q}」相关的示例图：`,
     '',
-    '![示例图片](https://picsum.photos/seed/xxchatai/640/360)',
+    '![山水草木](https://images.unsplash.com/photo-1501785888041-af3ef285b470?w=1280&h=720&fit=crop&q=100&auto=format)',
     '',
     '点击图片可放大预览。',
   ];
 }
 
+/** Mock：多格式综合回复*/
 function showcaseAnswer(q: string): string[] {
   return [
     `## 关于「${q}」的回答`,
@@ -142,7 +149,7 @@ function showcaseAnswer(q: string): string[] {
     '',
     '### 图片',
     '',
-    '![示例图片](https://picsum.photos/seed/xxchatai/640/360)',
+    '![山水草木](https://images.unsplash.com/photo-1501785888041-af3ef285b470?w=1280&h=720&fit=crop&q=100&auto=format)',
     '',
     '### Mermaid 流程图',
     '',
@@ -169,7 +176,33 @@ function showcaseAnswer(q: string): string[] {
   ];
 }
 
-/** 根据关键词识别意图，返回对应格式的回答；无法识别时给出多格式合集。 */
+/** Mock：深度思考示例（先 reasoning 再正文） */
+function reasoningDemoAnswer(q: string): { reasoning: string; text: string } {
+  const reasoning = [
+    '用户想看「思考块 + 正文」的流式效果，我先拆开问题目标。',
+    '',
+    '1. 先给出可折叠的推理过程，模拟真实模型逐步分析。',
+    '2. 再输出简洁 Markdown 正文，方便验证 UI 分层展示。',
+    '3. 保持内容短小，避免演示时过长。',
+    '',
+    '结论：分两段推送——reasoning 结束后再写正文。',
+  ].join('\n');
+
+  const text = [
+    `## 深度思考示例`,
+    '',
+    `你发送的是「${q}」。上面是模拟的思考过程，下面是最终回答：`,
+    '',
+    '- **思考块**：对应 `reasoning` 流式字段，可折叠查看',
+    '- **正文**：对应 `text` 流式字段，正常 Markdown 渲染',
+    '',
+    '切换到 OpenAI Provider 后，真实推理模型也会走同样的两段展示。',
+  ].join('\n');
+
+  return { reasoning, text };
+}
+
+/** 根据关键词识别意图，返回对应格式的回答；无法识别时给出多格式合集*/
 function buildMockMarkdown(query: string): string {
   const q = query.trim() || '你的问题';
   const lower = q.toLowerCase();
@@ -191,7 +224,7 @@ function buildMockMarkdown(query: string): string {
   return lines.join('\n');
 }
 
-/** 把整段文本切成 2~5 个字符的小块，模拟 token 级流式。 */
+/** 把整段文本切成 2~5 个字符的小块，模拟 token 级流式*/
 function* chunkText(text: string): Generator<string> {
   let i = 0;
   while (i < text.length) {
@@ -204,6 +237,26 @@ function* chunkText(text: string): Generator<string> {
 /** 按关键词生成 Markdown，再分片 yield 模拟真实 SSE */
 export async function* mockStream(opts: StreamOptions): ChatStream {
   const { query, signal } = opts;
+  const q = query.trim();
+  const wantsReasoningDemo = /深度思考|思考示例|reasoning/.test(q);
+
+  if (wantsReasoningDemo) {
+    const { reasoning, text } = reasoningDemoAnswer(q || '深度思考示例');
+    for (const chunk of chunkText(reasoning)) {
+      if (signal.aborted) return;
+      yield { type: 'reasoning', content: chunk };
+      await sleep(16 + Math.floor(Math.random() * 18));
+    }
+    if (signal.aborted) return;
+    await sleep(120);
+    for (const chunk of chunkText(text)) {
+      if (signal.aborted) return;
+      yield { type: 'text', content: chunk };
+      await sleep(18 + Math.floor(Math.random() * 22));
+    }
+    return;
+  }
+
   const full = buildMockMarkdown(query);
 
   for (const chunk of chunkText(full)) {

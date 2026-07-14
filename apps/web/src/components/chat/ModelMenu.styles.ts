@@ -1,5 +1,5 @@
 /**
- * ModelMenu 样式类名。
+ * ModelMenu 样式类名
  */
 export const styles = {
   trigger: 'max-w-[7rem] gap-1 rounded-full px-3',

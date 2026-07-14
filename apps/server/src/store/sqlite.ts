@@ -1,5 +1,5 @@
 /**
- * SQLite 历史存储：会话、消息、reasoning、流回放缓存。
+ * SQLite 历史存储：会话、消息、reasoning、流回放缓存
  */
 import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -7,19 +7,20 @@ import { randomUUID } from 'node:crypto';
 import Database from 'better-sqlite3';
 import type { Role, StreamChunk } from '../types.js';
 import type { HistoryStore, Session, SessionSummary, StoredMessage } from './history.js';
-import { titleFromQuery } from './history.js';
+import { SessionNotFoundError, titleFromQuery } from './history.js';
 
 const DB_PATH = process.env.XX_DB_PATH
   ? resolve(process.env.XX_DB_PATH)
   : resolve(process.cwd(), 'data/chat.db');
 
 /**
- * 基于 better-sqlite3 的历史会话持久化实现（第 5 步）。
- * sessions 一对多 messages；删除会话时消息经外键级联删除。
+ * 基于 better-sqlite3 的历史会话持久化实现（第 5 步）
+ * sessions 一对多 messages；删除会话时消息经外键级联删除
  */
 export class SqliteHistoryStore implements HistoryStore {
   private readonly db: Database.Database;
 
+  /** 打开或创建 SQLite 库并迁移表结构 */
   constructor(dbPath: string = DB_PATH) {
     mkdirSync(dirname(dbPath), { recursive: true });
     this.db = new Database(dbPath);
@@ -79,6 +80,7 @@ export class SqliteHistoryStore implements HistoryStore {
     return { user, assistant };
   }
 
+  /** 列出会话摘要*/
   listSessions(): SessionSummary[] {
     return this.db
       .prepare(
@@ -93,6 +95,7 @@ export class SqliteHistoryStore implements HistoryStore {
       .all() as SessionSummary[];
   }
 
+  /** 按 code 获取会话详情*/
   getSession(sessionCode: string): Session | undefined {
     const row = this.db
       .prepare(
@@ -117,15 +120,16 @@ export class SqliteHistoryStore implements HistoryStore {
     };
   }
 
-  /** 已有 sessionCode 则复用；否则新建（含客户端传入但尚不存在的 code） */
+  /** 已有 sessionCode 则复用；不存在则抛错；无 code 则新建 UUID */
   ensureSession(sessionCode: string | undefined, title: string): Session {
     if (sessionCode) {
       const existing = this.getSession(sessionCode);
       if (existing) return existing;
+      throw new SessionNotFoundError(sessionCode);
     }
     const now = Date.now();
     const session: Session = {
-      sessionCode: sessionCode ?? randomUUID(),
+      sessionCode: randomUUID(),
       title: titleFromQuery(title),
       createdAt: now,
       updatedAt: now,
@@ -154,6 +158,24 @@ export class SqliteHistoryStore implements HistoryStore {
       return insert;
     })();
     return Number(result.lastInsertRowid);
+  }
+
+  /** 末条若为 user 则删除 */
+  deleteLastUserMessage(sessionCode: string): boolean {
+    const last = this.db
+      .prepare(
+        `SELECT id, role FROM messages WHERE session_code = ? ORDER BY id DESC LIMIT 1`,
+      )
+      .get(sessionCode) as { id: number; role: string } | undefined;
+    if (!last || last.role !== 'user') return false;
+    const now = Date.now();
+    this.db.transaction(() => {
+      this.db.prepare(`DELETE FROM messages WHERE id = ?`).run(last.id);
+      this.db
+        .prepare(`UPDATE sessions SET updated_at = ? WHERE session_code = ?`)
+        .run(now, sessionCode);
+    })();
+    return true;
   }
 
   /** 末轮 user 文案与 provider/model 均匹配时返回缓存 delta（含 reasoning） */
@@ -201,16 +223,22 @@ export class SqliteHistoryStore implements HistoryStore {
       .run(messageId, provider, model, JSON.stringify(deltas));
   }
 
-  deleteSession(sessionCode: string): void {
-    this.db.prepare(`DELETE FROM sessions WHERE session_code = ?`).run(sessionCode);
+  /** 删除单个会话*/
+  deleteSession(sessionCode: string): boolean {
+    const result = this.db
+      .prepare(`DELETE FROM sessions WHERE session_code = ?`)
+      .run(sessionCode);
+    return result.changes > 0;
   }
 
-  deleteSessions(sessionCodes: string[]): void {
-    if (sessionCodes.length === 0) return;
+  /** 批量删除会话*/
+  deleteSessions(sessionCodes: string[]): number {
+    if (sessionCodes.length === 0) return 0;
     const placeholders = sessionCodes.map(() => '?').join(', ');
-    this.db
+    const result = this.db
       .prepare(`DELETE FROM sessions WHERE session_code IN (${placeholders})`)
       .run(...sessionCodes);
+    return result.changes;
   }
 }
 

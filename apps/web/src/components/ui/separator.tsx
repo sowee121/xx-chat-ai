@@ -1,5 +1,5 @@
 /**
- * shadcn Separator 原语。
+ * shadcn Separator 原语
  */
 "use client"
 

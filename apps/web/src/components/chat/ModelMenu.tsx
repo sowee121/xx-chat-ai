@@ -1,5 +1,5 @@
 /**
- * 模型下拉：拉取 OpenAI 兼容 /v1/models 并支持搜索。
+ * 模型下拉：拉取 OpenAI 兼容 /v1/models 并支持搜索
  */
 import { useMemo, useState } from 'react'
 import { ChevronDown, X } from 'lucide-react'
@@ -16,6 +16,7 @@ import { Input } from '@/components/ui/input'
 import { useChatStore } from '@/stores/chatStore'
 import { styles } from './ModelMenu.styles'
 
+/** 模型下拉菜单*/
 export function ModelMenu() {
   const provider = useChatStore((s) => s.provider)
   const model = useChatStore((s) => s.model)

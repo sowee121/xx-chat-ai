@@ -1,5 +1,5 @@
 /**
- * MessageContentShell 样式类名。
+ * MessageContentShell 样式类名
  */
 export const styles = {
   shell:
