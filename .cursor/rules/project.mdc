@@ -11,7 +11,7 @@ alwaysApply: true
 
 - **全栈 AI 聊天**：React 前端 + Fastify 后端，SSE 流式对话。
 - **硬性约束**：前端必须用 **React + `@microsoft/fetch-event-source`**，禁止换 SSE 客户端库。
-- **Provider 命名**：界面与 API 展示用 **OpenAI**；文档中说明其为 OpenAI API 兼容协议（edgefn、DeepSeek 等）。
+- **Provider 命名**：界面与 API 展示用 **OpenAI**；文档中说明其为 OpenAI API 兼容协议（DeepSeek、通义、智谱等）。
 - **范围外不做**：Typewriter、多模态上传、代码块全屏（Streamdown 不支持）、tool/citation 结构化片段。
 
 ## 仓库结构

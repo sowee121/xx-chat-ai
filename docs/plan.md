@@ -59,7 +59,7 @@
 | **视觉** | 简约对话风；全页 `bg-background`；大圆角 `--radius: 1rem` |
 | Provider | `DropdownMenu` 切换 Mock / OpenAI（已移除 Switch） |
 | 模型 | Header `ModelMenu` 动态下拉（`GET /api/providers/openai/models`） |
-| 大模型 | `openai` SDK 流式代理 OpenAI API（兼容协议，可接 edgefn、DeepSeek 等）；配置见 `config.local.json`（gitignore） |
+| 大模型 | `openai` SDK 流式代理 OpenAI API（兼容协议，可接 DeepSeek、通义、智谱等）；配置见 `config.local.json`（gitignore） |
 | 存储 | **better-sqlite3**（`apps/server/data/chat.db`，WAL） |
 | 运行 | 本地 `pnpm dev`（:5173 + :3001） |
 | 路由（Phase 5） | **react-router-dom**；`/` 新对话、`/chat/:sessionCode` 已有对话 |
@@ -132,7 +132,7 @@ pnpm add next-themes streamdown @streamdown/code @streamdown/mermaid @streamdown
 | --- | --- |
 | 侧栏 | `AppSidebar` + shadcn `Sidebar`（offcanvas，宽 `280px`）；顶部品牌（`PawPrint` 方标 +「XX Chat AI」`text-xl`）；「新建对话」；历史对话列表（`sessionsLoading` + `useDeferredSkeleton` 延时淡出）；标题行固定 `h-10` + 批量按钮占位槽；批量选择与删除；`TooltipProvider` 包裹（必须，否则白屏） |
 | 顶栏 | `ChatHeader`：左 `SidebarTrigger` + 新建对话；右 `ModelMenu` + `ProviderMenu` + `ModeToggle`（左右 `gap-2`） |
-| 空状态 | `HomeView`：居中标题 + `ChatComposer` + 快捷标签（含「图表示例」「深度思考示例」「图片示例」；暗门「模拟错误提示」） |
+| 空状态 | `HomeView`：居中标题 + `ChatComposer` + 快捷标签（含「图表示例」「图片示例」；暗门「模拟错误提示」） |
 | 用户消息 | 右对齐 `bg-muted` 圆角气泡（`h-12` 单行等价高度）；hover 显示编辑（回填输入框）+ 复制 |
 | AI 消息 | 全宽 `MarkdownMessage`（`leading-7`）；可选 `ReasoningBlock`（历史默认折叠；流式中自动展开；「正在思考」文案扫光） |
 | 流式错误 | `StreamErrorBanner`：红条 `w-fit max-w-full`；上行为大类中文，下行可选上游 `type: message` |
@@ -172,7 +172,7 @@ sequenceDiagram
     participant Vite as Vite_Proxy
     participant API as Fastify_3001
     participant DB as SQLite
-    participant LLM as EdgeFn_or_Mock
+    participant LLM as OpenAI_or_Mock
 
     Browser->>Vite: fetchEventSource POST /api/chat
     Vite->>API: SSE 转发
@@ -392,7 +392,7 @@ cp apps/server/config.local.example.json apps/server/config.local.json
 | 变量 / 字段 | 说明 |
 | --- | --- |
 | `OPENAI_API_KEY` | API Key |
-| `OPENAI_BASE_URL` | API 端点（OpenAI 兼容，如 edgefn、DeepSeek、OpenAI 官方） |
+| `OPENAI_BASE_URL` | API 端点（OpenAI 兼容，如 DeepSeek、通义、智谱、OpenAI 官方） |
 | `OPENAI_MODEL` | 默认模型（可被前端下拉覆盖） |
 | `OPENAI_SYSTEM_PROMPT` | 可选系统提示 |
 | `XX_DEFAULT_PROVIDER` | `mock` \| `openai` |
@@ -668,7 +668,7 @@ pnpm build   # web + server
 | 回到底部按钮闪烁 | `jumpingRef` 防止平滑滚动中间帧重新显示 |
 | Mermaid `barChart` 报错 | `convertInvalidBarChart` → `xychart-beta` |
 | Mermaid 语法不兼容 | `prepareMermaidSource` 高频修复 + 失败降级展示源码 |
-| edgefn R1 无 `reasoning_content` | `content` 内 `redacted_thinking` 标签流式解析 |
+| 部分兼容端点无 `reasoning_content` | `content` 内 thinking 标签流式解析 |
 | 仅有推理无正文时不落库 | 落库占位符 `（本轮无正文输出）`（`bugs-plan` BUG-01） |
 | 空 assistant 污染多轮上下文 | `chatStore` 过滤无正文 assistant（BUG-02） |
 | 流式报错丢失 partial | `catch` 路径 `persistAssistantIfAny`（BUG-03） |
